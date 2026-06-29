@@ -144,7 +144,6 @@ class Trainer:
             mode    = 'max',
             factor  = 0.5,
             patience= 20,
-            verbose = True,
         )
 
         # Logging.
