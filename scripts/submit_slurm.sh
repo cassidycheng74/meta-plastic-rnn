@@ -25,8 +25,6 @@ mkdir -p logs
 # Load CUDA modules.
 module purge
 module load python/3.10.13-fasrc01
-module load cuda/11.8.0-fasrc01
-module load cudnn/8.9.2.26_cuda11-fasrc01
 
 # Activate venv.
 source .venv/bin/activate

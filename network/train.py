@@ -44,7 +44,7 @@ def compute_performance(
     output:   torch.Tensor,   # (T, B, n_output)
     target:   torch.Tensor,   # (T, B, n_output)
     c_mask:   torch.Tensor,   # (T, B, n_output)
-    threshold: float = 0.2,
+    threshold: float = 0.05,
 ) -> float:
     """
     Fraction of trials where the mean squared error in the response
