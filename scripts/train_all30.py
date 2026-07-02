@@ -30,9 +30,6 @@ from network.train import Trainer
 # ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Train RNN on all 30 tasks')
-parser.add_argument('--rnn_type',    type=str,   default='LeakyRNN',
-                    choices=['LeakyRNN', 'GRU'],
-                    help='Network architecture')
 parser.add_argument('--n_rnn',       type=int,   default=128,
                     help='Number of RNN units')
 parser.add_argument('--seed',        type=int,   default=0,
