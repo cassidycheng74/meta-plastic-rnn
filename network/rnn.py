@@ -422,6 +422,18 @@ def build_network(config: dict) -> nn.Module:
             l2_h       = config.get('l2_h', 1e-6),
             l2_weight  = config.get('l2_weight', 1e-6),
         )
+    elif rnn_type == 'Transformer':
+        from network.transformer import TransformerNet
+        return TransformerNet(
+            n_input   = config['n_input'],
+            n_output  = config['n_output'],
+            d_model   = config.get('d_model', 128),
+            n_heads   = config.get('n_heads', 4),
+            n_layers  = config.get('n_layers', 3),
+            d_ff      = config.get('d_ff', 256),
+            dropout   = config.get('dropout', 0.1),
+            l2_weight = config.get('l2_weight', 1e-6),
+        )
     else:
         raise ValueError(f"Unknown rnn_type: {rnn_type!r}. "
                          f"Choose 'LeakyRNN' or 'GRU'.")

@@ -54,6 +54,12 @@ parser.add_argument('--task_subset', type=str,   default='all30',
                     help='Which tasks to train on')
 parser.add_argument('--save_dir',    type=str,   default=None,
                     help='Override output directory')
+parser.add_argument('--rnn_type', type=str, default='LeakyRNN',
+                    choices=['LeakyRNN', 'GRU', 'Transformer'])
+parser.add_argument('--d_model',  type=int, default=128)
+parser.add_argument('--n_heads',  type=int, default=4)
+parser.add_argument('--n_layers', type=int, default=3)
+parser.add_argument('--d_ff',     type=int, default=256)
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------
