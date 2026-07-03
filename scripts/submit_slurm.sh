@@ -53,7 +53,9 @@ python3 scripts/train_all30.py \
     --lr          0.001 \
     --display_step 1000 \
     --ckpt_step   10000 \
-    --target_perf 0.99 \
-    --task_subset all30
+    --target_perf 1.1 \
+    --task_subset all30 \
+    --save_dir    runs/LeakyRNN_128units_30tasks_seed0_v2
 
 echo "Training complete at $(date)"
+
