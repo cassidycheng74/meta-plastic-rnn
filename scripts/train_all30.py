@@ -32,6 +32,8 @@ from network.train import Trainer
 parser = argparse.ArgumentParser(description='Train RNN on all 30 tasks')
 parser.add_argument('--n_rnn',       type=int,   default=128,
                     help='Number of RNN units')
+parser.add_argument('--resume', type=str, default=None,
+                    help='Path to checkpoint to resume from')
 parser.add_argument('--seed',        type=int,   default=0,
                     help='Random seed')
 parser.add_argument('--max_steps',   type=int,   default=10_000_000,
@@ -145,42 +147,20 @@ trainer = Trainer(
     save_dir = save_dir,
 )
 
+if args.resume:
+    trainer.load_checkpoint(args.resume)
+    print(f'Resumed from step {trainer.step}')
+
 # ---------------------------------------------------------------------------
-# Curriculum: start with Yang/Driscoll tasks, add new tasks after warmup
+# Training
 # ---------------------------------------------------------------------------
 
-WARMUP_STEPS = 500_000   # train on Yang/Driscoll only for first 500k steps
-
-if args.task_subset == 'all30':
-    print(f'\nCurriculum: Yang/Driscoll tasks only for first {WARMUP_STEPS:,} steps')
-    print('Then: all 30 tasks\n')
-    trainer.set_curriculum(list(YANG_DRISCOLL_TASKS.keys()))
-
-    # Warmup phase.
-    trainer.train(
-        max_steps    = WARMUP_STEPS,
-        display_step = args.display_step,
-        checkpoint_step = args.ckpt_step,
-        target_perf  = args.target_perf,
-        eval_tasks   = list(YANG_DRISCOLL_TASKS.keys()),
-    )
-
-    # Full training on all 30.
-    print('\nSwitching to all 30 tasks...')
-    trainer.set_curriculum(list(task_funcs.keys()))
-    trainer.train(
-        max_steps    = args.max_steps,
-        display_step = args.display_step,
-        checkpoint_step = args.ckpt_step,
-        target_perf  = args.target_perf,
-        eval_tasks   = list(task_funcs.keys()),
-    )
-else:
-    trainer.train(
-        max_steps    = args.max_steps,
-        display_step = args.display_step,
-        checkpoint_step = args.ckpt_step,
-        target_perf  = args.target_perf,
-    )
+trainer.train(
+    max_steps       = args.max_steps,
+    display_step    = args.display_step,
+    checkpoint_step = args.ckpt_step,
+    target_perf     = args.target_perf,
+    eval_tasks      = list(task_funcs.keys()),
+)
 
 print(f'\nDone. Results saved to: {save_dir}')
