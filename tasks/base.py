@@ -1,4 +1,6 @@
 """
+tasks/base.py
+
 Core data structures for the meta-plastic-rnn task suite.
 
 Input channels (11 total):
@@ -7,13 +9,37 @@ Input channels (11 total):
     3, 4     angle B  (sin θ, cos θ)
     5        real A   (scalar)
     6        real B   (scalar)
-    7, 8, 9, 10  cue vector (4-dim ±1)
+    7, 8, 9, 10  task identity vector (4-dim ±1, fixed per task per lifetime)
 
 Output channels (5 total):
     0        fixation
     1, 2     angle response (sin φ, cos φ)
     3        real A response (scalar)
     4        real B response (scalar)
+
+Key design decision — task identity vector:
+    Channels 7-10 carry a fixed random ±1 vector that identifies the current
+    task. This is injected automatically by TaskDataset after trial generation,
+    so individual task functions do not need to set it.
+
+    This is the equivalent of Driscoll's rule input vector. Without it,
+    tasks with identical inputs but different required outputs (e.g. delaypro
+    and delayanti) are indistinguishable to the network, causing contradictory
+    gradient signals and failure to learn.
+
+    The vector is:
+        - Fixed within a lifetime (same vector for all trials of a given task)
+        - Fresh per lifetime (regenerated when TaskDataset is instantiated)
+        - Unique per task (different random vectors for different tasks)
+
+    For tasks that already use channels 7-10 as trial-specific cue vectors
+    (T12 MultiItemRecall, T20-T22 associative tasks, T25 FewShotClassif,
+    T29 DelayedAssociation), the task identity is ADDED on top of the
+    trial-specific cue. This is safe because trial-specific cues are written
+    per-timestep only during specific epochs, while the task identity is
+    written for the full trial. The trial-specific cues will overwrite during
+    their epochs, which is correct — during those epochs the network should
+    attend to the trial cue, not the task identity.
 """
 
 from __future__ import annotations
@@ -61,7 +87,8 @@ class Trial:
     """
     A batch of trials for one task.
 
-    Arrays are (T, B, C) — time, batch, channels.
+    Arrays are (T, B, C) — time first, then batch, then channels.
+    This matches PyTorch RNN conventions (seq_len, batch, input_size).
 
     Args:
         tdim:       number of timesteps
@@ -93,11 +120,9 @@ class Trial:
         self.y = np.zeros((tdim, batch_size, N_OUTPUT), dtype=np.float32)
 
         # Cost mask: (T, B, N_OUTPUT).
-        # Upweights the response epoch relative to the pre-response period.
         self.c_mask = np.zeros((tdim, batch_size, N_OUTPUT), dtype=np.float32)
 
         # Epoch dict: maps epoch name -> (start, end) in timesteps.
-        # None means 0 or tdim respectively.
         self.epochs: Dict[str, Tuple[Optional[int], Optional[int]]] = {}
 
     # -----------------------------------------------------------------------
@@ -106,22 +131,13 @@ class Trial:
 
     def set_input(
         self,
-        channel:  int,
-        value:    float | np.ndarray,
-        t_start:  Optional[int] = None,
-        t_end:    Optional[int] = None,
+        channel:   int,
+        value:     float | np.ndarray,
+        t_start:   Optional[int] = None,
+        t_end:     Optional[int] = None,
         batch_idx: Optional[int | List[int]] = None,
     ):
-        """
-        Set input channel to value over [t_start, t_end).
-
-        Args:
-            channel:   input channel index (use IN_* constants)
-            value:     scalar or array of shape (batch_size,) or (t_end-t_start,)
-            t_start:   start timestep (None = 0)
-            t_end:     end timestep (None = tdim)
-            batch_idx: which batch items to set (None = all)
-        """
+        """Set input channel to value over [t_start, t_end)."""
         t0 = t_start if t_start is not None else 0
         t1 = t_end   if t_end   is not None else self.tdim
         if batch_idx is None:
@@ -131,10 +147,10 @@ class Trial:
 
     def set_output(
         self,
-        channel:  int,
-        value:    float | np.ndarray,
-        t_start:  Optional[int] = None,
-        t_end:    Optional[int] = None,
+        channel:   int,
+        value:     float | np.ndarray,
+        t_start:   Optional[int] = None,
+        t_end:     Optional[int] = None,
         batch_idx: Optional[int | List[int]] = None,
     ):
         """Set output channel to value over [t_start, t_end)."""
@@ -147,10 +163,10 @@ class Trial:
 
     def set_angle_input(
         self,
-        angles:   np.ndarray,
-        channel:  str,
-        t_start:  Optional[int] = None,
-        t_end:    Optional[int] = None,
+        angles:  np.ndarray,
+        channel: str,
+        t_start: Optional[int] = None,
+        t_end:   Optional[int] = None,
     ):
         """
         Encode angles as (sin, cos) into input channels.
@@ -158,7 +174,6 @@ class Trial:
         Args:
             angles:  array of shape (batch_size,) in radians
             channel: 'A' or 'B'
-            t_start, t_end: time window
         """
         if channel == 'A':
             sin_ch, cos_ch = IN_SIN_A, IN_COS_A
@@ -178,12 +193,7 @@ class Trial:
         t_start: Optional[int] = None,
         t_end:   Optional[int] = None,
     ):
-        """
-        Encode angles as (sin, cos) into output channels OUT_SIN, OUT_COS.
-
-        Args:
-            angles:  array of shape (batch_size,) in radians
-        """
+        """Encode angles as (sin, cos) into output channels OUT_SIN, OUT_COS."""
         t0 = t_start if t_start is not None else 0
         t1 = t_end   if t_end   is not None else self.tdim
         self.y[t0:t1, :, OUT_SIN] = np.sin(angles)
@@ -210,8 +220,14 @@ class Trial:
         """
         Set 4-dim cue vector into inputs 7-10.
 
+        Used for trial-specific cue vectors in associative tasks.
+        Note: TaskDataset also writes a task identity vector to these
+        channels for the full trial duration — trial-specific cues written
+        here will overwrite the task identity during their epochs, which
+        is the intended behavior.
+
         Args:
-            vectors: array of shape (batch_size, 4) or (4,) for all items
+            vectors: (batch_size, 4) or (4,) array of ±1 values
         """
         t0 = t_start if t_start is not None else 0
         t1 = t_end   if t_end   is not None else self.tdim
@@ -223,28 +239,25 @@ class Trial:
 
     def add_cost_mask(
         self,
-        response_on:  int,
-        pre_weight:   float = 1.0,
-        post_weight:  float = 5.0,
-        pre_on:       int   = 0,
+        response_on: int,
+        pre_weight:  float = 1.0,
+        post_weight: float = 5.0,
+        pre_on:      int   = 0,
     ):
         """
         Build the cost mask.
 
         The response epoch (response_on onward) is upweighted relative to
-        the pre-response period. Fixation channel gets an extra 2x weight
-        since holding fixation is important throughout.
+        the pre-response period. Fixation channel gets an extra 2x weight.
 
         Args:
             response_on:  timestep where response epoch begins
             pre_weight:   cost weight for pre-response period
             post_weight:  cost weight for response period
             pre_on:       ignore the first pre_on timesteps entirely
-                          (default 0; Driscoll used 100ms worth)
         """
         self.c_mask[pre_on:response_on, :, :] = pre_weight
         self.c_mask[response_on:,       :, :] = post_weight
-        # Extra weight on fixation channel.
         self.c_mask[:, :, OUT_FIX] *= 2.0
 
     # -----------------------------------------------------------------------
@@ -305,24 +318,35 @@ class TaskDataset(TorchDataset):
     PyTorch Dataset that generates trials on the fly.
 
     Each call to __getitem__ generates one fresh batch of trials for a
-    randomly sampled task. The 'length' is artificial — it controls how
-    many batches constitute one epoch of training.
+    randomly sampled task, then injects the task identity vector into
+    channels 7-10 for the full trial duration.
+
+    Task identity injection:
+        Each task is assigned a unique random ±1 vector of shape (4,)
+        at initialization. This vector is written into x[:, :, 7:11]
+        for every trial of that task, giving the network a consistent
+        signal to distinguish tasks with identical sensory inputs
+        (e.g. delaypro vs delayanti).
+
+        The vector is fixed within a lifetime but fresh across lifetimes
+        (i.e. per TaskDataset instantiation). This matches the task_vec
+        convention in the task spec.
 
     Args:
-        task_funcs:  dict mapping task name -> callable(config, rng) -> Trial
-        config:      dict of hyperparameters passed to every task function
-        batches_per_epoch: how many batches to generate per epoch
-        task_probs:  optional dict of task_name -> sampling probability
-                     (uniform if None)
+        task_funcs:        dict mapping task name -> callable -> Trial
+        config:            dict of hyperparameters
+        batches_per_epoch: artificial epoch length
+        task_probs:        optional sampling weights per task
+        seed:              random seed for reproducibility
     """
 
     def __init__(
         self,
         task_funcs:        Dict[str, Callable],
         config:            dict,
-        batches_per_epoch: int  = 1000,
+        batches_per_epoch: int                       = 1000,
         task_probs:        Optional[Dict[str, float]] = None,
-        seed:              Optional[int] = None,
+        seed:              Optional[int]              = None,
     ):
         self.task_funcs        = task_funcs
         self.task_names        = list(task_funcs.keys())
@@ -339,6 +363,14 @@ class TaskDataset(TorchDataset):
             n = len(self.task_names)
             self.probs = np.ones(n, dtype=np.float64) / n
 
+        # Generate one unique task identity vector per task.
+        # Fixed for this dataset instance (lifetime), fresh on re-instantiation.
+        self.task_vecs: Dict[str, np.ndarray] = {
+            name: self.rng.choice(
+                [-1.0, 1.0], size=4).astype(np.float32)
+            for name in self.task_names
+        }
+
     def __len__(self) -> int:
         return self.batches_per_epoch
 
@@ -349,6 +381,16 @@ class TaskDataset(TorchDataset):
 
         # Generate one batch of trials.
         trial = task_fn(self.config, self.rng)
+
+        # Inject task identity vector into channels 7-10 for full trial.
+        # This overwrites any zeros already there. For tasks that write
+        # trial-specific cues into these channels (T12, T20-T22, T25, T29),
+        # those writes happen inside the task function and will overwrite
+        # this background during their specific epochs — which is correct.
+        task_vec = self.task_vecs[task_name]   # (4,)
+        trial.x[:, :, IN_CUE_0:IN_CUE_3 + 1] = task_vec   # broadcast T, B
+
+        # Add input noise after task vec injection so noise is on top.
         trial.add_input_noise(self.rng)
 
         x, y, c_mask = trial.to_tensors()
@@ -361,6 +403,12 @@ class TaskDataset(TorchDataset):
         self.task_names = task_names
         n = len(task_names)
         self.probs = np.ones(n, dtype=np.float64) / n
+        # Note: task_vecs are preserved for all tasks even when curriculum
+        # restricts sampling, so resuming full training uses the same vecs.
+
+    def get_task_vec(self, task_name: str) -> np.ndarray:
+        """Return the task identity vector for a given task. Shape (4,)."""
+        return self.task_vecs[task_name]
 
 
 # ---------------------------------------------------------------------------
@@ -369,13 +417,12 @@ class TaskDataset(TorchDataset):
 
 def collate_trials(batch):
     """
-    Custom collate: trials have variable T so we can't stack naively.
+    Custom collate for variable-length trials.
 
-    Each item in batch is (x, y, c_mask, task_name) where x is (T, B, C).
-    Since each item is already a batch, we just return the first item
-    (TaskDataset already returns a full batch per __getitem__).
+    Each item is (x, y, c_mask, task_name) where x is (T, B, C).
+    Since TaskDataset already returns a full batch per __getitem__,
+    we just unwrap the outer list.
     """
-    # batch is a list of length 1 when DataLoader batch_size=1
     x, y, c_mask, task_name = batch[0]
     return x, y, c_mask, task_name
 
@@ -386,27 +433,37 @@ def collate_trials(batch):
 
 DEFAULT_CONFIG = {
     # Network
-    'n_input'    : N_INPUT,
-    'n_output'   : N_OUTPUT,
-    'n_rnn'      : 128,
+    'n_input'      : N_INPUT,
+    'n_output'     : N_OUTPUT,
+    'n_rnn'        : 256,        # updated default to match PI recommendation
 
     # Timing
-    'dt'         : 20.0,    # ms per timestep
-    'tau'        : 100.0,   # membrane time constant in ms
-    # alpha = dt/tau
-    'alpha'      : 0.2,
+    'dt'           : 20.0,       # ms per timestep
+    'tau'          : 100.0,      # membrane time constant in ms
+    'alpha'        : 0.2,        # dt / tau
 
     # Noise
-    'sigma_rec'  : 0.05,
-    'sigma_x'    : 0.1,
+    'sigma_rec'    : 0.05,
+    'sigma_x'      : 0.1,
 
     # Training
-    'batch_size' : 64,
-    'learning_rate': 1e-3,
+    'batch_size'   : 64,
+    'learning_rate': 3e-4,       # updated default (was 1e-3)
 
     # Cost mask weights
-    'pre_weight' : 1.0,
-    'post_weight': 5.0,
+    'pre_weight'   : 1.0,
+    'post_weight'  : 5.0,
+
+    # Regularization
+    'l1_h'         : 0.0,
+    'l2_h'         : 1e-6,
+    'l1_weight'    : 0.0,
+    'l2_weight'    : 1e-6,
+
+    # Architecture
+    'activation'   : 'softplus',
+    'w_rec_init'   : 'diag',
+    'w_rec_coeff'  : 1.0,
 }
 
 
