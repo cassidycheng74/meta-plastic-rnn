@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
 #SBATCH --mem=64G
-#SBATCH --time=3-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --output=logs/train_all30_%j.out
 #SBATCH --error=logs/train_all30_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
