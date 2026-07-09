@@ -6,26 +6,22 @@ Training loop for meta-plastic-rnn.
 Handles:
     - Single-task and multi-task training
     - Logging of loss, regularization, and per-task performance
-    - Checkpointing with periodic log saving
+    - Checkpointing with periodic log saving including task_vecs
     - Early stopping on target performance
     - Curriculum learning via staged task introduction
 
-Usage:
-    from network.train import Trainer
-    from network.rnn import build_network
-    from tasks.base import make_config, TaskDataset
-    from tasks.yang_driscoll import YANG_DRISCOLL_TASKS
-
-    config  = make_config(n_rnn=128, rnn_type='LeakyRNN')
-    model   = build_network(config)
-    dataset = TaskDataset(YANG_DRISCOLL_TASKS, config)
-    trainer = Trainer(model, dataset, config, save_dir='runs/exp_01')
-    trainer.train(max_steps=1_000_000)
+Key fixes in this version:
+    - _evaluate() now injects task identity vectors so evaluation matches training
+    - save_checkpoint() saves task_vecs so they can be restored on resume
+    - load_checkpoint() restores task_vecs to dataset
+    - Per-task performance logged at every display step
+    - Unbuffered print output (use python3 -u for real-time log streaming)
 """
 
 from __future__ import annotations
 
 import os
+import sys
 import time
 import json
 import numpy as np
@@ -35,7 +31,7 @@ from torch.utils.data import DataLoader
 from typing import Dict, List, Optional
 from collections import defaultdict
 
-from tasks.base import collate_trials, N_OUTPUT
+from tasks.base import collate_trials, N_OUTPUT, IN_CUE_0, IN_CUE_3
 
 
 # ---------------------------------------------------------------------------
@@ -52,12 +48,9 @@ def compute_performance(
     Fraction of trials where the mean squared error in the response
     epoch falls below threshold.
 
-    Only timesteps with c_mask > 1 (the response epoch) are evaluated,
-    matching Driscoll's get_perf() logic.
-
+    Only timesteps with c_mask > 1 (the response epoch) are evaluated.
     Returns a float in [0, 1].
     """
-    # Response epoch: timesteps where c_mask > 1 on any output channel.
     resp_mask = (c_mask > 1.0).any(dim=-1)   # (T, B)
 
     if not resp_mask.any():
@@ -76,16 +69,13 @@ def compute_performance(
 # ---------------------------------------------------------------------------
 
 def masked_mse_loss(
-    output:  torch.Tensor,   # (T, B, n_output)
-    target:  torch.Tensor,   # (T, B, n_output)
-    c_mask:  torch.Tensor,   # (T, B, n_output)
+    output:  torch.Tensor,
+    target:  torch.Tensor,
+    c_mask:  torch.Tensor,
 ) -> torch.Tensor:
     """
-    Weighted mean squared error loss.
-
-    Each element is weighted by its c_mask value so the response epoch
-    contributes more to the total loss than the fixation period.
-    Normalized by total mask weight for comparable loss scale across tasks.
+    Weighted MSE loss. Response epoch upweighted by c_mask.
+    Normalized by total mask weight for comparable scale across tasks.
     """
     sq_err   = (output - target) ** 2
     weighted = sq_err * c_mask
@@ -114,7 +104,7 @@ class Trainer:
         model:    nn.Module,
         dataset,
         config:   dict,
-        save_dir: str            = 'runs/default',
+        save_dir: str           = 'runs/default',
         device:   Optional[str] = None,
     ):
         self.model    = model
@@ -149,8 +139,7 @@ class Trainer:
         self.log  = defaultdict(list)
         self.step = 0
 
-        # DataLoader — batch_size=1 because TaskDataset already
-        # returns a full trial batch per __getitem__.
+        # DataLoader.
         self.loader = DataLoader(
             dataset,
             batch_size  = 1,
@@ -159,7 +148,7 @@ class Trainer:
             num_workers = 0,
         )
 
-        # Small config for fast evaluation (fewer trials per eval step).
+        # Small config for fast evaluation.
         self._eval_config = {**config, 'batch_size': 16}
 
         os.makedirs(save_dir, exist_ok=True)
@@ -172,8 +161,8 @@ class Trainer:
     def train(
         self,
         max_steps:       int   = 1_000_000,
-        display_step:    int   = 1_000,
-        checkpoint_step: int   = 10_000,
+        display_step:    int   = 5_000,
+        checkpoint_step: int   = 50_000,
         target_perf:     float = 1.1,
         eval_tasks:      Optional[List[str]] = None,
     ):
@@ -187,21 +176,19 @@ class Trainer:
             target_perf:     stop early if min per-task perf exceeds this
                              (set to 1.1 to disable early stopping)
             eval_tasks:      tasks to evaluate at each display step
-                             (None = all tasks in dataset)
         """
-        print(f"Training on {self.device}")
+        print(f"Training on {self.device}", flush=True)
         print(f"Model parameters: "
-              f"{sum(p.numel() for p in self.model.parameters()):,}")
+              f"{sum(p.numel() for p in self.model.parameters()):,}", flush=True)
         print(f"Max steps: {max_steps:,}  |  "
               f"Display every: {display_step:,}  |  "
-              f"Checkpoint every: {checkpoint_step:,}")
-        print("-" * 60)
+              f"Checkpoint every: {checkpoint_step:,}", flush=True)
+        print("-" * 60, flush=True)
 
         t_start     = time.time()
         loader_iter = iter(self.loader)
 
         while self.step < max_steps:
-            # Refresh iterator when exhausted.
             try:
                 x, y, c_mask, task_name = next(loader_iter)
             except StopIteration:
@@ -229,34 +216,33 @@ class Trainer:
                 self.log['perf_avg'].append(perf_avg)
                 self.log['time'].append(elapsed)
 
+                # Log per-task performance so analysis doesn't need checkpoints.
+                for name, perf in perfs.items():
+                    self.log[f'perf_{name}'].append(perf)
+
                 self._print_status(elapsed, loss, loss_reg, perfs)
                 self.scheduler.step(perf_avg)
 
                 # Early stopping.
                 if perf_min > target_perf:
                     print(f"\nTarget performance {target_perf:.2f} reached "
-                          f"at step {self.step:,}. Stopping.")
+                          f"at step {self.step:,}. Stopping.", flush=True)
                     break
 
-            # Checkpointing — also saves log.json.
+            # Checkpointing.
             if self.step % checkpoint_step == 0:
                 self.save_checkpoint(f'ckpt_step{self.step}.pt')
 
         # Final save.
         self.save_checkpoint('ckpt_final.pt')
         self._save_log()
-        print("\nTraining complete.")
+        print("\nTraining complete.", flush=True)
 
     # -----------------------------------------------------------------------
     # Single gradient step
     # -----------------------------------------------------------------------
 
-    def _train_step(
-        self,
-        x:      torch.Tensor,
-        y:      torch.Tensor,
-        c_mask: torch.Tensor,
-    ):
+    def _train_step(self, x, y, c_mask):
         self.model.train()
         self.optimizer.zero_grad()
 
@@ -265,16 +251,13 @@ class Trainer:
         total_loss = task_loss + result.loss_reg
 
         total_loss.backward()
-
-        # Gradient clipping matching Driscoll.
         nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-
         self.optimizer.step()
 
         return task_loss.item(), result.loss_reg.item()
 
     # -----------------------------------------------------------------------
-    # Evaluation
+    # Evaluation — injects task identity vectors to match training
     # -----------------------------------------------------------------------
 
     def _evaluate(
@@ -285,8 +268,10 @@ class Trainer:
         """
         Evaluate performance on each task.
 
-        Uses a small batch size (16) and n_batches=2 for speed.
-        Returns dict of task_name -> performance.
+        Injects the task identity vector into channels 7-10 for each trial,
+        matching what TaskDataset does during training. Without this, tasks
+        that depend on the identity signal (e.g. delayanti) will appear to
+        have zero performance during evaluation even when they are learned.
         """
         self.model.eval()
         perfs = {}
@@ -294,12 +279,17 @@ class Trainer:
 
         with torch.no_grad():
             for name in names:
-                task_fn     = self.dataset.task_funcs[name]
+                task_fn  = self.dataset.task_funcs[name]
+                task_vec = self.dataset.task_vecs.get(name)
                 batch_perfs = []
 
                 for _ in range(n_batches):
-                    # Use smaller eval config for speed.
                     trial = task_fn(self._eval_config, self.dataset.rng)
+
+                    # Inject task identity vector — critical for correct eval.
+                    if task_vec is not None:
+                        trial.x[:, :, IN_CUE_0:IN_CUE_3 + 1] = task_vec
+
                     trial.add_input_noise(self.dataset.rng)
                     x, y, c_mask = trial.to_tensors()
 
@@ -320,24 +310,23 @@ class Trainer:
     # -----------------------------------------------------------------------
 
     def set_curriculum(self, task_names: List[str]):
-        """
-        Restrict training to a subset of tasks.
-
-        Example:
-            trainer.set_curriculum(['delaypro', 'delayanti'])
-            trainer.train(max_steps=100_000)
-            trainer.set_curriculum(list(ALL_TASKS.keys()))
-            trainer.train(max_steps=1_000_000)
-        """
+        """Restrict training to a subset of tasks."""
         self.dataset.set_tasks(task_names)
-        print(f"Curriculum set to {len(task_names)} tasks: {task_names}")
+        print(f"Curriculum set to {len(task_names)} tasks: {task_names}",
+              flush=True)
 
     # -----------------------------------------------------------------------
-    # Checkpointing
+    # Checkpointing — saves task_vecs so evaluation stays consistent on resume
     # -----------------------------------------------------------------------
 
     def save_checkpoint(self, filename: str):
-        """Save model, optimizer, log, and config to a checkpoint file."""
+        """
+        Save model, optimizer, log, config, and task identity vectors.
+
+        task_vecs are saved so that on resume, evaluation uses the same
+        identity vectors as training — otherwise resumed evaluation would
+        use freshly generated vectors that don't match the trained model.
+        """
         path = os.path.join(self.save_dir, filename)
         torch.save({
             'step'       : self.step,
@@ -345,32 +334,41 @@ class Trainer:
             'optim_state': self.optimizer.state_dict(),
             'log'        : dict(self.log),
             'config'     : self.config,
+            'task_vecs'  : self.dataset.task_vecs,
         }, path)
-        # Always write log.json alongside the checkpoint so it's
-        # readable even if training is killed before completion.
         self._save_log()
-        print(f"  Checkpoint saved: {path}")
+        print(f"  Checkpoint saved: {path}", flush=True)
 
     def load_checkpoint(self, path: str):
-        """Load model weights, optimizer state, and log from checkpoint."""
+        """
+        Load model weights, optimizer state, log, and task identity vectors.
+
+        Restores task_vecs to the dataset so evaluation uses the same
+        identity vectors the model was trained with.
+        """
         ckpt = torch.load(path, map_location=self.device)
         self.model.load_state_dict(ckpt['model_state'])
         self.optimizer.load_state_dict(ckpt['optim_state'])
         self.step = ckpt['step']
         self.log  = defaultdict(list, ckpt['log'])
-        print(f"Loaded checkpoint from {path} (step {self.step:,})")
+
+        # Restore task identity vectors if present.
+        if 'task_vecs' in ckpt:
+            self.dataset.task_vecs = ckpt['task_vecs']
+            print(f"  Restored task_vecs for "
+                  f"{len(ckpt['task_vecs'])} tasks", flush=True)
+        else:
+            print("  Warning: checkpoint has no task_vecs — "
+                  "evaluation may be inaccurate for identity-dependent tasks",
+                  flush=True)
+
+        print(f"Loaded checkpoint from {path} (step {self.step:,})", flush=True)
 
     # -----------------------------------------------------------------------
     # Logging
     # -----------------------------------------------------------------------
 
-    def _print_status(
-        self,
-        elapsed:  float,
-        loss:     float,
-        loss_reg: float,
-        perfs:    Dict[str, float],
-    ):
+    def _print_status(self, elapsed, loss, loss_reg, perfs):
         perf_min = min(perfs.values()) if perfs else 0.0
         perf_avg = float(np.mean(list(perfs.values()))) if perfs else 0.0
 
@@ -378,10 +376,11 @@ class Trainer:
               f"Time {elapsed:6.0f}s  |  "
               f"Loss {loss:.4f}  |  "
               f"Reg {loss_reg:.4f}  |  "
-              f"Perf avg {perf_avg:.2f}  min {perf_min:.2f}")
+              f"Perf avg {perf_avg:.2f}  min {perf_min:.2f}",
+              flush=True)
 
         for name, perf in sorted(perfs.items()):
-            print(f"  {name:<25} perf {perf:.2f}")
+            print(f"  {name:<25} perf {perf:.2f}", flush=True)
 
     def _save_config(self):
         path = os.path.join(self.save_dir, 'config.json')

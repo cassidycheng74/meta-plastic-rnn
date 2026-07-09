@@ -39,12 +39,12 @@ print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'n
 echo "================"
 
 # ---------------------------------------------------------------------------
-# Training
+# Training — python3 -u for unbuffered output so logs appear in real time
 # ---------------------------------------------------------------------------
 
 echo "Starting 30-task training at $(date)"
 
-python3 scripts/train_all30.py \
+python3 -u scripts/train_all30.py \
     --rnn_type     LeakyRNN \
     --n_rnn        256 \
     --seed         0 \
@@ -55,6 +55,6 @@ python3 scripts/train_all30.py \
     --ckpt_step    50000 \
     --target_perf  1.1 \
     --task_subset  all30 \
-    --save_dir     runs/LeakyRNN_256units_30tasks_seed0
+    --save_dir     runs/LeakyRNN_256units_30tasks_seed0_v2
 
 echo "Training complete at $(date)"
