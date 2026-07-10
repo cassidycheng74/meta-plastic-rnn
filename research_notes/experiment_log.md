@@ -209,3 +209,34 @@ All figures saved to `runs/LeakyRNN_128units_30tasks_seed0_v3/figures/`:
 - [ ] Investigate why in-context learning tasks solve so easily
 - [ ] Read Miconi differentiable plasticity paper for Phase 5 prep
 - [ ] Meet with PI to confirm Phase 3 is sufficient to move to Phase 5
+
+# 07-10-26
+## 256-unit RNN Run
+Architecture: GRU
+Units: 256
+Tasks: 30 (11 Yang/Driscoll + 19 new)
+Max steps: 10,000,000
+Learning rate: 3e-4
+Batch size: 128
+Display step: 5,000
+Checkpoint step: 50,000
+Task identity: yes (base.py + train_v3.py)
+task_vecs saved in checkpoint: yes
+Per-task perf in log: yes
+GPU: A100-SXM4-40GB
+Time limit: 2 days
+
+## Final performance at step 1,000,000
+Evaluated with correct task_vec injection, 5 batches per task.
+26/30 tasks solved.
+Solved at 1.0: delaypro, delayanti, memorypro, memoryanti, extendedmemory, contextdm_a, contextdm_b, delaymatchsample, delaynonmatchsample, pulsecounting, intervalreproduction, pulserateestimation, sequencerecall, cueresponseassoc, pairedassociation, reversallearning, onlinelinearreg, onlinenonlinearreg, fewshotclassif, countandrecall, delayedassociation.
+Near 1.0: dm (0.975), dmanti (0.963), multiitemrecall (0.975), memorydm (0.938), sequentialdecision (0.988).
+Stuck at 0.0: rhythmgeneration, conditionalrhythm, toggle, conditionaltoggle.
+
+## Key findings
+- Task identity vectors essential. delayanti and memoryanti were 0.0 without them, 1.0 with them. - Equivalent to Driscoll's rule input.
+- 256 units sufficient for 26/30 tasks. The 4 stuck tasks need qualitatively different dynamics, not more capacity.
+- In-context learning solved immediately. onlinelinearreg and fewshotclassif at 1.0 within first few thousand steps.
+- Compositional tasks as easy as components. Good primitive transfer. Positive sign for meta-learning phase.
+- Loss reached 0.0038, still decreasing at job cutoff
+- More training would likely push dm and memorydm to 1.0.
