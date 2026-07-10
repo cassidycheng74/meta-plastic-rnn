@@ -13,10 +13,6 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=ccheng35@harvard.edu
 
-# ---------------------------------------------------------------------------
-# Environment
-# ---------------------------------------------------------------------------
-
 cd ~/projects/meta-plastic-rnn
 mkdir -p logs
 
@@ -37,10 +33,6 @@ print('CUDA:', torch.cuda.is_available())
 print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')
 "
 echo "================"
-
-# ---------------------------------------------------------------------------
-# Training — python3 -u for unbuffered output so logs appear in real time
-# ---------------------------------------------------------------------------
 
 echo "Starting 30-task training at $(date)"
 
