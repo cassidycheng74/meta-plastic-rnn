@@ -240,3 +240,51 @@ several new findings:
 
 6. MemoryPro and MemoryAnti show lower mean unit variance than expected,
    consistent with ring attractor being a compact low-dimensional representation.
+
+# 07-20-26: Rhythm/Toggle Failure Analysis
+
+## Key finding
+
+The four "failed" tasks split into two categories upon closer inspection.
+
+## RhythmGeneration — stability failure, not learning failure
+
+The network initiates oscillations correctly but cannot sustain them.
+Early window performance analysis (evaluating only first N timesteps of
+sustain period) reveals the network has actually learned the task:
+
+First 10 timesteps: 0.88 correct (14/16 trials)
+First 20 timesteps: 0.56 correct (9/16 trials)
+First 50 timesteps: 0.12 correct (2/16 trials)
+Full trial (397 ts): 0.00 correct (0/16 trials)
+
+Output trace confirms: the network produces a sinusoid at roughly the
+right frequency and amplitude at the start of the sustain period, but
+the oscillation decays to near-zero within ~15-25 timesteps (~300-500ms).
+
+Root cause: the network has learned a damped transient response rather
+than a true limit cycle. A limit cycle requires the recurrent weight
+matrix to have eigenvalues near the unit circle in a specific
+configuration. Gradient descent on MSE finds a local solution that
+approximates the oscillation transiently but decays back to a fixed point.
+
+The reported 0.0 performance is an artifact of evaluating over the full
+trial — the task is actually 56-88% learned depending on the evaluation
+window. The binary MSE threshold metric (< 0.05 over full trial) is
+misleading for continuous output tasks with decay.
+
+ConditionalRhythm likely has the same failure mode — not yet confirmed
+but expected given identical computational requirement.
+
+## Toggle — genuine failure
+
+Output std = 0.005, MSE = 1.0005.
+Network outputs near-zero throughout the entire trial.
+No switching behavior, no bistable dynamics, no partial learning.
+
+The gradient signal is weak because the network never attempts switching,
+so it never receives informative error signal about timing. This is a
+chicken-and-egg problem — without trying to switch, the network can't
+learn to switch.
+
+ConditionalToggle expected to have the same failure mode.
