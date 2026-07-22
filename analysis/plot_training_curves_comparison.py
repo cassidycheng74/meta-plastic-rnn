@@ -1,6 +1,4 @@
 """
-analysis/plot_training_curves_comparison.py
-
 Plot per-task performance curves and a final comparison table
 for all three architectures: LeakyRNN, GRU, and Transformer.
 

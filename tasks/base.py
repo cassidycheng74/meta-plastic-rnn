@@ -1,7 +1,4 @@
 """
-tasks/base.py
-
-Core data structures for the meta-plastic-rnn task suite.
 
 Input channels (11 total):
     0        fixation
@@ -16,30 +13,6 @@ Output channels (5 total):
     1, 2     angle response (sin φ, cos φ)
     3        real A response (scalar)
     4        real B response (scalar)
-
-Key design decision — task identity vector:
-    Channels 7-10 carry a fixed random ±1 vector that identifies the current
-    task. This is injected automatically by TaskDataset after trial generation,
-    so individual task functions do not need to set it.
-
-    This is the equivalent of Driscoll's rule input vector. Without it,
-    tasks with identical inputs but different required outputs (e.g. delaypro
-    and delayanti) are indistinguishable to the network, causing contradictory
-    gradient signals and failure to learn.
-
-    The vector is:
-        - Fixed within a lifetime (same vector for all trials of a given task)
-        - Fresh per lifetime (regenerated when TaskDataset is instantiated)
-        - Unique per task (different random vectors for different tasks)
-
-    For tasks that already use channels 7-10 as trial-specific cue vectors
-    (T12 MultiItemRecall, T20-T22 associative tasks, T25 FewShotClassif,
-    T29 DelayedAssociation), the task identity is ADDED on top of the
-    trial-specific cue. This is safe because trial-specific cues are written
-    per-timestep only during specific epochs, while the task identity is
-    written for the full trial. The trial-specific cues will overwrite during
-    their epochs, which is correct — during those epochs the network should
-    attend to the trial cue, not the task identity.
 """
 
 from __future__ import annotations
@@ -88,7 +61,6 @@ class Trial:
     A batch of trials for one task.
 
     Arrays are (T, B, C) — time first, then batch, then channels.
-    This matches PyTorch RNN conventions (seq_len, batch, input_size).
 
     Args:
         tdim:       number of timesteps
@@ -221,10 +193,6 @@ class Trial:
         Set 4-dim cue vector into inputs 7-10.
 
         Used for trial-specific cue vectors in associative tasks.
-        Note: TaskDataset also writes a task identity vector to these
-        channels for the full trial duration — trial-specific cues written
-        here will overwrite the task identity during their epochs, which
-        is the intended behavior.
 
         Args:
             vectors: (batch_size, 4) or (4,) array of ±1 values
@@ -416,13 +384,6 @@ class TaskDataset(TorchDataset):
 # ---------------------------------------------------------------------------
 
 def collate_trials(batch):
-    """
-    Custom collate for variable-length trials.
-
-    Each item is (x, y, c_mask, task_name) where x is (T, B, C).
-    Since TaskDataset already returns a full batch per __getitem__,
-    we just unwrap the outer list.
-    """
     x, y, c_mask, task_name = batch[0]
     return x, y, c_mask, task_name
 

@@ -1,7 +1,4 @@
 """
-network/train.py
-
-Training loop for meta-plastic-rnn.
 
 Handles:
     - Single-task and multi-task training
@@ -9,13 +6,6 @@ Handles:
     - Checkpointing with periodic log saving including task_vecs
     - Early stopping on target performance
     - Curriculum learning via staged task introduction
-
-Key fixes in this version:
-    - _evaluate() now injects task identity vectors so evaluation matches training
-    - save_checkpoint() saves task_vecs so they can be restored on resume
-    - load_checkpoint() restores task_vecs to dataset
-    - Per-task performance logged at every display step
-    - Unbuffered print output (use python3 -u for real-time log streaming)
 """
 
 from __future__ import annotations
@@ -73,10 +63,6 @@ def masked_mse_loss(
     target:  torch.Tensor,
     c_mask:  torch.Tensor,
 ) -> torch.Tensor:
-    """
-    Weighted MSE loss. Response epoch upweighted by c_mask.
-    Normalized by total mask weight for comparable scale across tasks.
-    """
     sq_err   = (output - target) ** 2
     weighted = sq_err * c_mask
     loss     = weighted.sum() / c_mask.sum().clamp(min=1.0)
@@ -269,9 +255,7 @@ class Trainer:
         Evaluate performance on each task.
 
         Injects the task identity vector into channels 7-10 for each trial,
-        matching what TaskDataset does during training. Without this, tasks
-        that depend on the identity signal (e.g. delayanti) will appear to
-        have zero performance during evaluation even when they are learned.
+        matching what TaskDataset does during training
         """
         self.model.eval()
         perfs = {}
@@ -323,9 +307,6 @@ class Trainer:
         """
         Save model, optimizer, log, config, and task identity vectors.
 
-        task_vecs are saved so that on resume, evaluation uses the same
-        identity vectors as training — otherwise resumed evaluation would
-        use freshly generated vectors that don't match the trained model.
         """
         path = os.path.join(self.save_dir, filename)
         torch.save({
@@ -342,9 +323,6 @@ class Trainer:
     def load_checkpoint(self, path: str):
         """
         Load model weights, optimizer state, log, and task identity vectors.
-
-        Restores task_vecs to the dataset so evaluation uses the same
-        identity vectors the model was trained with.
         """
         ckpt = torch.load(path, map_location=self.device)
         self.model.load_state_dict(ckpt['model_state'])

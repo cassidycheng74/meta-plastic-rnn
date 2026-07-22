@@ -1,16 +1,4 @@
 """
-Recurrent network implementations for meta-plastic-rnn.
-
-Includes:
-    LeakyRNNCell   - single-step leaky RNN cell
-    LeakyRNN       - full sequence LeakyRNN (wraps cell)
-    GRUNet         - full sequence GRU network
-    NetworkOutput  - named tuple for network outputs
-
-All networks take input of shape (T, B, n_input) and return
-output of shape (T, B, n_output), matching the Trial convention
-in tasks/base.py.
-
 Design notes:
     - Networks are stateless across trials; hidden state is
       initialized fresh each forward pass.
@@ -78,7 +66,7 @@ class LeakyRNNCell(nn.Module):
         phi(x) = activation(x)
         output(t) = W_out @ phi(x(t)) + b_out
 
-    where x is the pre-activation state (not phi(x)).
+    x is the pre-activation state (not phi(x)).
 
     Args:
         n_input:     number of input channels
@@ -189,9 +177,6 @@ class LeakyRNNCell(nn.Module):
 class LeakyRNN(nn.Module):
     """
     Full-sequence leaky RNN.
-
-    Runs LeakyRNNCell over an entire trial and returns outputs at
-    every timestep along with regularization losses.
 
     Args:
         n_input, n_rnn, n_output, alpha, sigma_rec, activation,
@@ -315,8 +300,6 @@ class LeakyRNN(nn.Module):
 
 class GRUNet(nn.Module):
     """
-    GRU network for comparison with LeakyRNN.
-
     Uses PyTorch's built-in GRU cell for efficiency, wrapped with the
     same output projection and regularization interface as LeakyRNN.
 
@@ -388,8 +371,6 @@ class GRUNet(nn.Module):
 
 def build_network(config: dict) -> nn.Module:
     """
-    Build a network from a config dict.
-
     Config keys used:
         rnn_type:    'LeakyRNN' or 'GRU'
         n_input, n_rnn, n_output

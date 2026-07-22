@@ -1,13 +1,7 @@
 """
-network/transformer.py
-
-Causal transformer encoder for cognitive task training.
-
-Design choices:
+Design:
     - Causal (masked) self-attention: output at timestep t depends only
-      on inputs up to t, matching the RNN's causal structure. Without this
-      the transformer could trivially solve memory tasks by attending to
-      the response epoch directly.
+      on inputs up to t, matching the RNN's causal structure 
     - Same input/output interface as LeakyRNN and GRUNet: takes
       (T, B, n_input) and returns NetworkOutput with fields
       output, hidden, loss_reg.
@@ -15,19 +9,6 @@ Design choices:
       in the trial timeline.
     - No cross-trial state: hidden state resets between trials, same
       as the RNN implementations.
-
-Scientific motivation:
-    Schmidhuber et al. (2021) argue that attention in transformers
-    implicitly mimics fast weight updates. Training a transformer on the
-    same 30 tasks as the LeakyRNN and comparing their neural geometry
-    (PCA structure, shared subspace, fixed points) directly tests whether
-    attention-based in-context learning and recurrent attractor dynamics
-    find the same computational solutions.
-
-    Key prediction: the transformer will match or exceed RNN performance
-    on most tasks, but Phase 7 analysis will show different dynamical
-    geometry — attention patterns rather than ring attractors for memory
-    tasks. Either result is scientifically interesting.
 """
 
 from __future__ import annotations
@@ -41,21 +22,15 @@ from typing import Optional
 
 from network.rnn import NetworkOutput
 
-
 # ---------------------------------------------------------------------------
 # Positional encoding
 # ---------------------------------------------------------------------------
 
 class SinusoidalPositionalEncoding(nn.Module):
     """
-    Standard sinusoidal positional encoding from Vaswani et al. 2017.
-
     Adds a fixed (non-learned) position signal to the input embeddings
     so the transformer knows where each timestep falls in the trial.
 
-    This matters for cognitive tasks because the network needs to know
-    whether it is in the fixation period, stimulus period, delay, or
-    response period — information that is implicit in position.
     """
 
     def __init__(self, d_model: int, max_len: int = 2000, dropout: float = 0.1):
@@ -72,7 +47,6 @@ class SinusoidalPositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(pos * div)
         # Shape: (max_len, 1, d_model) for broadcasting over batch.
         pe = pe.unsqueeze(1)
-        # Register as buffer — moves with .to(device) but not a parameter.
         self.register_buffer('pe', pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -85,19 +59,12 @@ class SinusoidalPositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
-
 # ---------------------------------------------------------------------------
 # TransformerNet
 # ---------------------------------------------------------------------------
 
 class TransformerNet(nn.Module):
     """
-    Causal transformer encoder for cognitive task training.
-
-    Processes trial sequences of shape (T, B, n_input) and produces
-    outputs of shape (T, B, n_output) at every timestep, using causal
-    (past-only) attention.
-
     Args:
         n_input:    number of input channels (11 in the unified format)
         n_output:   number of output channels (5)
@@ -106,7 +73,7 @@ class TransformerNet(nn.Module):
         n_layers:   number of transformer encoder layers
         d_ff:       feedforward layer dimension (typically 2-4x d_model)
         dropout:    dropout rate applied in attention and feedforward layers
-        max_len:    maximum trial length in timesteps for positional encoding
+        max_len:    max trial length in timesteps for positional encoding
         l2_weight:  L2 regularization on all parameters
     """
 
@@ -182,7 +149,7 @@ class TransformerNet(nn.Module):
 
     def _causal_mask(self, T: int, device: torch.device) -> torch.Tensor:
         """
-        Generate upper-triangular causal attention mask.
+        Generate causal attention mask.
 
         Entry (i, j) is True if position i should NOT attend to position j.
         Upper triangle = future positions = masked out.
@@ -263,10 +230,6 @@ class TransformerNet(nn.Module):
 class TransformerNetWithAttention(TransformerNet):
     """
     Extended version that returns attention weights for analysis.
-
-    Use this in Phase 7 to visualize what the transformer attends to
-    during different trial epochs — this directly tests the Schmidhuber
-    hypothesis that attention patterns resemble fast weight updates.
 
     Usage:
         model = TransformerNetWithAttention(...)

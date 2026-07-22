@@ -1,9 +1,4 @@
 """
-analysis/plot_training_curves_single.py
-
-Plot per-task performance curves for a single training run.
-Works for LeakyRNN, GRU, or Transformer checkpoints.
-
 Usage:
     python analysis/plot_training_curves_single.py \
         --run_dir runs/GRU_256units_30tasks_seed0 \

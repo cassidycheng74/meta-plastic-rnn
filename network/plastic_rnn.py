@@ -1,11 +1,5 @@
 """
-network/plastic_rnn.py
-
-Differentiable plasticity implementation following Miconi et al. 2018.
-"Differentiable plasticity: training plastic neural networks with
-backpropagation." ICML 2018.
-
-Core idea:
+Main idea:
     Each synapse has a fixed weight W and a plastic component alpha * A,
     where A is a Hebbian trace that updates within/across trials and
     alpha is a learned per-synapse plasticity coefficient.
@@ -22,18 +16,6 @@ Across-trial persistence:
     resets to zero. This allows the network to accumulate synaptic changes
     across many trials — enabling across-trial associative learning.
 
-Truncated BPTT:
-    h is always detached when passed between trials (prevents retain_graph
-    errors). A is detached every truncate_every trials to bound the
-    computation graph size.
-
-In-context learning connection (Schmidhuber / fast weights):
-    The plastic term alpha * A is mathematically equivalent to a fast
-    weight matrix updated by Hebbian learning. This is related to how
-    transformers implement in-context learning via attention — both are
-    forms of input-dependent weight modification. Phase 7 will compare
-    whether meta-learned Hebbian updates produce the same representations
-    as transformer attention for in-context tasks.
 """
 
 from __future__ import annotations
@@ -339,10 +321,8 @@ class LifetimeState:
     """
     Manages hidden state and Hebbian trace across trials within a lifetime.
 
-    Key design decisions:
-        - h is ALWAYS detached when carried across trials. This prevents
-          the retain_graph error that occurs when backward() is called
-          on a graph that references h from a previous trial's forward pass.
+    Details:
+        - h is always detached when carried across trials
         - A is detached every truncate_every trials. Between truncations,
           gradients flow back through A across multiple trials, allowing
           the outer loop to learn how the Hebbian trace should evolve.
@@ -385,11 +365,6 @@ class LifetimeState:
     def update(self, result: PlasticOutput, trial_idx: int):
         # h always detached.
         self.h = result.hidden[-1].detach()
-        # A always detached after backward — graph is already freed.
-        # Truncation controls whether gradients flow THROUGH A into the
-        # next trial's forward pass, which is handled differently:
-        # we simply don't detach before the forward pass when we want
-        # gradient flow. But after backward() is called, A must be detached.
         self.A = result.hebb.detach()
         self.trial_count += 1
 
@@ -400,8 +375,6 @@ class LifetimeState:
 
 def build_plastic_network(config: dict) -> PlasticRNN:
     """
-    Build a PlasticRNN from a config dict.
-
     Relevant config keys beyond standard make_config:
         alpha_init:   initial plasticity coefficient (default 0.0)
         eta_init:     Hebbian decay rate (default 0.01)

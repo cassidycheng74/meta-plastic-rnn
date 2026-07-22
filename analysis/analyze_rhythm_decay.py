@@ -1,10 +1,4 @@
 """
-analysis/analyze_rhythm_decay.py
-
-Diagnostic analysis for rhythmgeneration and toggle tasks.
-Shows that rhythmgeneration is a limit cycle stability problem
-(oscillation initiates correctly but decays) rather than a genuine failure.
-
 Produces:
     1. Output trace over time — target vs output for multiple trials
     2. MSE as a function of time within sustain period (decay curve)

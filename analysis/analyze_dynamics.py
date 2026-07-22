@@ -1,13 +1,4 @@
 """
-analysis/analyze_dynamics.py
-
-Dynamical analysis of the 30-task LeakyRNN baseline.
-Adapts Driscoll et al. 2024 analyses to the new 30-task format.
-
-Key fix in v2: scatter plots use trial endpoints (final hidden state)
-rather than all response timesteps. This shows geometric structure
-cleanly — ring attractors, two-cluster structure, etc.
-
 Analyses:
     1. PCA trajectories per task
     2. Pro vs anti shared subspace (ring attractor test)

@@ -1,9 +1,4 @@
 """
-tasks/new_tasks.py
-
-New tasks T12-T30 for the meta-plastic-rnn project.
-All use the unified 11-input / 5-output Trial format from tasks/base.py.
-
 Task list:
     T12  MultiItemRecall       - multi-item memory + associative binding
     T13  PulseCounting         - counting

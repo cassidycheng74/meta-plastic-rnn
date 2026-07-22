@@ -1,16 +1,4 @@
 """
-
-The 11 Yang/Driscoll tasks (T01-T11) ported to the meta-plastic-rnn
-Trial format (11 inputs / 5 outputs, no ring encoding assumptions).
-
-These match the tasks in Driscoll et al. 2024 (Nature Neuroscience)
-and are the baseline task set for reproducing their results.
-
-Each function signature is:
-    task_fn(config: dict, rng: np.random.RandomState) -> Trial
-
-where config is the dict returned by tasks.base.make_config().
-
 Input channels used:
     IN_FIX    (0)  - fixation signal
     IN_SIN_A  (1)  - sin of angle A

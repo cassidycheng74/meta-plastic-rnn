@@ -1,8 +1,6 @@
 """
 scripts/train_plastic.py
 
-Meta-training script for the PlasticRNN (Miconi et al. 2018).
-
 Training structure:
     Each "lifetime" = N trials of a randomly sampled task.
     The Hebbian trace A persists across trials within a lifetime,
@@ -18,16 +16,15 @@ Training structure:
         A                   -- fast weight matrix (resets each lifetime)
 
 Key design:
-    h and A are always detached between trials after backward() is called.
-    This prevents retain_graph errors. The plasticity signal comes from
-    backprop through the within-trial Hebbian updates (A[t] depends on
+    h and A are always detached between trials after backward() is called. 
+    The plasticity signal comes from backprop through the within-trial Hebbian updates (A[t] depends on
     r[t] and r[t-1] within the same trial forward pass).
 
 Logging:
     Two performance metrics are tracked at each display step:
     - perf_avg_fixed:   performance with A=0 (tests fixed weights only)
     - perf_avg_plastic: performance after N trials of Hebbian learning
-    The delta (plastic - fixed) shows how much the Hebbian trace helps.
+    Delta (plastic - fixed) shows how much the Hebbian trace helps.
 
 Usage:
     python scripts/train_plastic.py
@@ -188,8 +185,7 @@ lifetime  = 0
 
 def evaluate_fixed(model, dataset, task_funcs, device, config, n_batches=3):
     """
-    Evaluate with zero Hebbian trace — tests fixed weights only.
-    This is the baseline: what can the fixed weights do without plasticity?
+    eval with zero Hebbian trace — tests fixed weights only.
     """
     model.eval()
     perfs = {}
@@ -219,9 +215,7 @@ def evaluate_fixed(model, dataset, task_funcs, device, config, n_batches=3):
 def evaluate_plastic(model, dataset, task_funcs, device, config,
                      n_trials=None, n_batches=3):
     """
-    Evaluate with Hebbian learning across n_trials.
-    This tests whether the plastic component improves performance
-    beyond the fixed weights alone.
+    eval with Hebbian learning across n_trials.
     """
     if n_trials is None:
         n_trials = args.n_trials
