@@ -70,9 +70,9 @@ parser.add_argument('--hebb_clip',     type=float, default=0.5)
 parser.add_argument('--w_rec_coeff',   type=float, default=0.5)
 parser.add_argument('--display_every', type=int,   default=500)
 parser.add_argument('--ckpt_every',    type=int,   default=5_000)
-parser.add_argument('--task_subset',   type=str,   default='all30',
-                    choices=['all30', 'yang11', 'new19',
-                             'assoc_only', 'icl_only', 'rhythm_only'])
+parser.add_argument('--task_subset', type=str, default='all30',
+                    choices=['all30', 'yang11', 'new19', 'assoc_only',
+                             'icl_only', 'rhythm_only', 'toggle_only'])
 parser.add_argument('--save_dir',      type=str,   default=None)
 parser.add_argument('--resume',        type=str,   default=None)
 args = parser.parse_args()
@@ -108,6 +108,9 @@ elif args.task_subset == 'icl_only':
 elif args.task_subset == 'rhythm_only':
     task_funcs = {k: NEW_TASKS[k] for k in [
         'rhythmgeneration', 'conditionalrhythm',
+        'toggle', 'conditionaltoggle']}
+elif args.task_subset == 'toggle_only':
+    task_funcs = {k: NEW_TASKS[k] for k in [
         'toggle', 'conditionaltoggle']}
 
 n_tasks = len(task_funcs)
