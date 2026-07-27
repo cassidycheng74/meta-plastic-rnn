@@ -60,23 +60,16 @@ from tasks.base import (
 # ---------------------------------------------------------------------------
 
 def _ri(rng, lo, hi):
-    """Random int in [lo, hi] inclusive."""
     return int(rng.randint(lo, hi + 1))
 
-
 def _ru(rng, lo, hi):
-    """Random float in [lo, hi)."""
     return float(rng.uniform(lo, hi))
 
-
 def _fix(trial, t0, t1):
-    """Set fixation input and output over [t0, t1)."""
     trial.x[t0:t1, :, IN_FIX]  = 1.0
     trial.y[t0:t1, :, OUT_FIX] = 1.0
 
-
 def _angle_in(trial, angles, channel, t0, t1):
-    """Write sin/cos of angles into input channels over [t0, t1)."""
     if channel == 'A':
         trial.x[t0:t1, :, IN_SIN_A] = np.sin(angles)
         trial.x[t0:t1, :, IN_COS_A] = np.cos(angles)
@@ -84,20 +77,11 @@ def _angle_in(trial, angles, channel, t0, t1):
         trial.x[t0:t1, :, IN_SIN_B] = np.sin(angles)
         trial.x[t0:t1, :, IN_COS_B] = np.cos(angles)
 
-
 def _angle_out(trial, angles, t0, t1):
-    """Write sin/cos of angles into output channels over [t0, t1)."""
     trial.y[t0:t1, :, OUT_SIN] = np.sin(angles)
     trial.y[t0:t1, :, OUT_COS] = np.cos(angles)
 
-
 def _cue_in(trial, vectors, t0, t1):
-    """
-    Write a cue vector into inputs 7-10 over [t0, t1).
-
-    Args:
-        vectors: (B, 4) or (4,) array of ±1 values
-    """
     trial.x[t0:t1, :, IN_CUE_0:IN_CUE_3 + 1] = vectors
 
 
@@ -105,16 +89,10 @@ def _cue_in(trial, vectors, t0, t1):
 # T12: MultiItemRecall
 # ---------------------------------------------------------------------------
 
-def multiitemrecall(config: dict, rng: np.random.RandomState) -> Trial:
+def multiitemrecall(config, rng):
     """
     T12: MultiItemRecall.
-
-    K items shown sequentially, each = angle on channel A + cue vector on
-    channels 7-10. After a delay, one cue vector is shown alone as a probe.
-    Respond with the angle originally paired with that cue.
-
-    Inputs:  fixation, angle A, cue vector (7-10)
-    Outputs: fixation, angle response
+    K items (angle + cue vector). After delay, probe cue -> recall angle.
     """
     dt = config['dt']
     B  = config['batch_size']
@@ -136,28 +114,22 @@ def multiitemrecall(config: dict, rng: np.random.RandomState) -> Trial:
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
     _fix(trial, 0, resp_on)
 
-    # Generate K (angle, cue_vector) pairs per batch item.
-    # Cues are fresh per trial.
     angles     = rng.uniform(0, 2 * np.pi, (B, K))
     probe_idxs = rng.randint(0, K, size=B)
 
     for k in range(K):
-        t0 = fix_dur + k * item_dur
-        t1 = t0 + item_dur
-        cues_k = random_cue_vectors(B, rng)   # (B, 4)
+        t0     = fix_dur + k * item_dur
+        t1     = t0 + item_dur
+        cues_k = random_cue_vectors(B, rng)
         for i in range(B):
             trial.x[t0:t1, i, IN_SIN_A] = np.sin(angles[i, k])
             trial.x[t0:t1, i, IN_COS_A] = np.cos(angles[i, k])
             trial.x[t0:t1, i, IN_CUE_0:IN_CUE_3 + 1] = cues_k[i]
-
-        # Store cues for probe lookup.
         if k == 0:
-            all_cues = cues_k[:, np.newaxis, :]   # (B, 1, 4)
+            all_cues = cues_k[:, np.newaxis, :]
         else:
-            all_cues = np.concatenate(
-                [all_cues, cues_k[:, np.newaxis, :]], axis=1)   # (B, K, 4)
+            all_cues = np.concatenate([all_cues, cues_k[:, np.newaxis, :]], axis=1)
 
-    # Probe: show the cue vector for the probed item.
     for i in range(B):
         k_probe = probe_idxs[i]
         trial.x[probe_on:probe_off, i, IN_CUE_0:IN_CUE_3 + 1] = all_cues[i, k_probe]
@@ -179,16 +151,8 @@ def multiitemrecall(config: dict, rng: np.random.RandomState) -> Trial:
 # T13: PulseCounting
 # ---------------------------------------------------------------------------
 
-def pulsecounting(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T13: PulseCounting.
-
-    N irregular pulses arrive on IN_REAL_A. After a delay, output N/N_max
-    as a scalar on OUT_REAL_A. Not solvable by simple integration.
-
-    Inputs:  fixation, pulse train on IN_REAL_A
-    Outputs: fixation, scalar count on OUT_REAL_A
-    """
+def pulsecounting(config, rng):
+    """T13: Count N pulses, output N/N_max."""
     dt    = config['dt']
     B     = config['batch_size']
     N_max = 6
@@ -230,16 +194,8 @@ def pulsecounting(config: dict, rng: np.random.RandomState) -> Trial:
 # T14: IntervalReproduction
 # ---------------------------------------------------------------------------
 
-def intervalreproduction(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T14: IntervalReproduction (Ready-Set-Go).
-
-    Two pulses define interval delta_t. After the second pulse (Set),
-    produce a pulse delta_t later. Jazayeri & Shadlen paradigm.
-
-    Inputs:  fixation, pulses on IN_REAL_A
-    Outputs: fixation, produced pulse on OUT_REAL_A
-    """
+def intervalreproduction(config, rng):
+    """T14: Ready-Set-Go interval reproduction."""
     dt      = config['dt']
     B       = config['batch_size']
     pulse_w = max(1, int(5 / dt))
@@ -257,15 +213,11 @@ def intervalreproduction(config: dict, rng: np.random.RandomState) -> Trial:
 
     trial = Trial(tdim, B, dt=dt,
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
-    # Fixation stays on throughout — no traditional go cue.
     trial.x[:, :, IN_FIX]  = 1.0
     trial.y[:, :, OUT_FIX] = 1.0
-
-    # Ready pulse.
     trial.x[ready_on:ready_off, :, IN_REAL_A] = 1.0
-    # Set pulse.
-    trial.x[set_on:set_off, :, IN_REAL_A] = 1.0
-    # Target: brief pulse centered at target_t.
+    trial.x[set_on:set_off,     :, IN_REAL_A] = 1.0
+
     t0 = max(0, target_t - pulse_w)
     t1 = min(tdim, target_t + pulse_w)
     trial.y[t0:t1, :, OUT_REAL_A] = 1.0
@@ -285,23 +237,15 @@ def intervalreproduction(config: dict, rng: np.random.RandomState) -> Trial:
 # T15: PulseRateEstimation
 # ---------------------------------------------------------------------------
 
-def pulserateestimation(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T15: PulseRateEstimation.
-
-    Poisson pulse train at rate r over a fixed window.
-    Output r / r_max as scalar after window ends.
-
-    Inputs:  fixation, pulse train on IN_REAL_A
-    Outputs: fixation, scalar rate on OUT_REAL_A
-    """
+def pulserateestimation(config, rng):
+    """T15: Estimate pulse rate, output r/r_max."""
     dt    = config['dt']
     B     = config['batch_size']
     r_max = 0.30
 
     rates    = rng.uniform(0.05, r_max, size=B)
     fix_dur  = _ri(rng, 30, 80)
-    obs_dur  = 200   # fixed observation window
+    obs_dur  = 200
     resp_dur = _ri(rng, 30, 100)
 
     obs_on  = fix_dur
@@ -330,23 +274,24 @@ def pulserateestimation(config: dict, rng: np.random.RandomState) -> Trial:
 
 
 # ---------------------------------------------------------------------------
-# T16: RhythmGeneration
+# T16: RhythmGeneration (FIXED)
 # ---------------------------------------------------------------------------
 
-def rhythmgeneration(config: dict, rng: np.random.RandomState) -> Trial:
+def rhythmgeneration(config, rng):
     """
     T16: RhythmGeneration.
 
-    Brief scalar cue specifies frequency f. Network must sustain
-    sin(2*pi*f*t) on OUT_REAL_A. Requires limit cycle dynamics.
-
-    Inputs:  fixation during cue, frequency cue on IN_REAL_A
-    Outputs: fixation during cue, sustained sinusoid on OUT_REAL_A
+    FIX: Added short ramp-up (5 timesteps) at the start of the sustain
+    period so the target transitions smoothly from 0. Previously the target
+    jumped to sin(0)=0 and immediately started climbing, which required the
+    network to precisely time the start of oscillation. The ramp gives a
+    brief window for initialization.
     """
     dt    = config['dt']
     B     = config['batch_size']
     f_min = 0.02
     f_max = 0.08
+    RAMP_DUR = 5   # timesteps to ramp from 0 to full amplitude
 
     freqs       = rng.uniform(f_min, f_max, size=B)
     fix_dur     = _ri(rng, 30, 80)
@@ -359,13 +304,15 @@ def rhythmgeneration(config: dict, rng: np.random.RandomState) -> Trial:
 
     trial = Trial(tdim, B, dt=dt,
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
-    # Fixation drops when sustain begins.
     _fix(trial, 0, cue_off)
 
     for i in range(B):
         trial.x[cue_on:cue_off, i, IN_REAL_A] = freqs[i] / f_max
         for t in range(cue_off, tdim):
-            trial.y[t, i, OUT_REAL_A] = np.sin(2 * np.pi * freqs[i] * (t - cue_off))
+            phase     = 2 * np.pi * freqs[i] * (t - cue_off)
+            # Ramp amplitude smoothly from 0 to 1 over first RAMP_DUR timesteps.
+            ramp      = min(1.0, (t - cue_off) / max(1, RAMP_DUR))
+            trial.y[t, i, OUT_REAL_A] = ramp * np.sin(phase)
 
     trial.add_cost_mask(response_on=cue_off)
     trial.epochs = {
@@ -380,16 +327,8 @@ def rhythmgeneration(config: dict, rng: np.random.RandomState) -> Trial:
 # T17: SequenceRecall
 # ---------------------------------------------------------------------------
 
-def sequencerecall(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T17: SequenceRecall.
-
-    K angles shown sequentially on channel A. After a delay, reproduce
-    them in the same order.
-
-    Inputs:  fixation, angles on channel A
-    Outputs: fixation, angles reproduced sequentially
-    """
+def sequencerecall(config, rng):
+    """T17: Show K angles, reproduce in order after delay."""
     dt = config['dt']
     B  = config['batch_size']
     K  = rng.choice([3, 4])
@@ -398,11 +337,11 @@ def sequencerecall(config: dict, rng: np.random.RandomState) -> Trial:
     fix_dur   = _ri(rng, 30, 80)
     item_dur  = _ri(rng, 40, 60)
     delay_dur = _ri(rng, 50, 150)
-    resp_dur  = _ri(rng, 40, 60)   # per item
+    resp_dur  = _ri(rng, 40, 60)
 
-    enc_end  = fix_dur + K * item_dur
-    resp_on  = enc_end + delay_dur
-    tdim     = resp_on + K * resp_dur
+    enc_end = fix_dur + K * item_dur
+    resp_on = enc_end + delay_dur
+    tdim    = resp_on + K * resp_dur
 
     trial = Trial(tdim, B, dt=dt,
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
@@ -433,21 +372,24 @@ def sequencerecall(config: dict, rng: np.random.RandomState) -> Trial:
 
 
 # ---------------------------------------------------------------------------
-# T18: Toggle
+# T18: Toggle (FIXED)
 # ---------------------------------------------------------------------------
 
-def toggle(config: dict, rng: np.random.RandomState) -> Trial:
+def toggle(config, rng):
     """
     T18: Toggle (bistable flip-flop).
 
-    Pulses on IN_REAL_A flip output between -1 and +1.
-    Continuous output throughout — no separate response epoch.
+    FIX: Initial toggle state is now briefly signaled on IN_REAL_B for
+    the first INIT_DUR timesteps of the stream period. The network can read
+    this signal to initialize its bistable state, then track flips from there.
 
-    Inputs:  fixation during fix, pulses on IN_REAL_A
-    Outputs: fixation during fix, toggle state on OUT_REAL_A
+    Previously the initial state was random with no input signal, making
+    it impossible for the network to know whether to start at +1 or -1.
+    The network was averaging over both cases and outputting ~0.
     """
     dt    = config['dt']
     B     = config['batch_size']
+    INIT_DUR = 10  # timesteps to signal initial state
 
     fix_dur    = _ri(rng, 30, 80)
     stream_dur = _ri(rng, 200, 400)
@@ -462,6 +404,11 @@ def toggle(config: dict, rng: np.random.RandomState) -> Trial:
     for i in range(B):
         state = rng.choice([-1.0, 1.0])
         trial.y[fix_dur:, i, OUT_REAL_A] = state
+
+        # FIX: Signal initial state on IN_REAL_B briefly at stream start.
+        # Network reads this and uses it to initialize bistable state.
+        trial.x[fix_dur:fix_dur + INIT_DUR, i, IN_REAL_B] = state
+
         t = fix_dur
         while t < tdim - pulse_w:
             if rng.rand() < pulse_rate:
@@ -482,21 +429,23 @@ def toggle(config: dict, rng: np.random.RandomState) -> Trial:
 
 
 # ---------------------------------------------------------------------------
-# T19: ConditionalToggle
+# T19: ConditionalToggle (FIXED)
 # ---------------------------------------------------------------------------
 
-def conditionaltoggle(config: dict, rng: np.random.RandomState) -> Trial:
+def conditionaltoggle(config, rng):
     """
     T19: ConditionalToggle.
 
-    Two independent pulse streams (IN_REAL_A, IN_REAL_B) toggle two
-    independent outputs (OUT_REAL_A, OUT_REAL_B).
+    FIX: Initial states for both output channels are now signaled briefly
+    at stream start. Channel A initial state on IN_REAL_B (as in Toggle).
+    Channel B initial state on IN_SIN_B (reusing an available input channel).
 
-    Inputs:  fixation, pulses on IN_REAL_A and IN_REAL_B
-    Outputs: fixation, state A on OUT_REAL_A, state B on OUT_REAL_B
+    This gives the network the information it needs to initialize both
+    independent bistable states before tracking flips.
     """
     dt    = config['dt']
     B     = config['batch_size']
+    INIT_DUR = 10
 
     fix_dur    = _ri(rng, 30, 80)
     stream_dur = _ri(rng, 200, 400)
@@ -514,6 +463,10 @@ def conditionaltoggle(config: dict, rng: np.random.RandomState) -> Trial:
         s_b = rng.choice([-1.0, 1.0])
         trial.y[fix_dur:, i, OUT_REAL_A] = s_a
         trial.y[fix_dur:, i, OUT_REAL_B] = s_b
+
+        # FIX: Signal initial states at stream start.
+        trial.x[fix_dur:fix_dur + INIT_DUR, i, IN_REAL_B] = s_a  # channel A state
+        trial.x[fix_dur:fix_dur + INIT_DUR, i, IN_SIN_B]  = s_b  # channel B state
 
         for ch, rate, out_ch in [
             (IN_REAL_A, rate_a, OUT_REAL_A),
@@ -543,17 +496,8 @@ def conditionaltoggle(config: dict, rng: np.random.RandomState) -> Trial:
 # T20: CueResponseAssoc
 # ---------------------------------------------------------------------------
 
-def cueresponseassoc(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T20: CueResponseAssoc (supervised proxy).
-
-    Cue identity shown as a discrete angle on channel A.
-    Fixed mapping: cue -> cue + pi/2.
-    Full across-lifetime meta-learning version deferred to Phase 5.
-
-    Inputs:  fixation, cue angle on channel A
-    Outputs: fixation, associated response angle
-    """
+def cueresponseassoc(config, rng):
+    """T20: Cue -> response angle mapping (supervised proxy)."""
     dt     = config['dt']
     B      = config['batch_size']
     n_cues = 8
@@ -565,10 +509,10 @@ def cueresponseassoc(config: dict, rng: np.random.RandomState) -> Trial:
     cue_locs      = cue_locs_all[cue_ids]
     response_locs = response_locs_all[cue_ids]
 
-    fix_dur  = _ri(rng, 30, 80)
-    cue_dur  = _ri(rng, 30, 80)
-    delay_dur= _ri(rng, 20, 80)
-    resp_dur = _ri(rng, 30, 100)
+    fix_dur   = _ri(rng, 30, 80)
+    cue_dur   = _ri(rng, 30, 80)
+    delay_dur = _ri(rng, 20, 80)
+    resp_dur  = _ri(rng, 30, 100)
 
     cue_on  = fix_dur
     cue_off = fix_dur + cue_dur
@@ -595,17 +539,8 @@ def cueresponseassoc(config: dict, rng: np.random.RandomState) -> Trial:
 # T21: PairedAssociation
 # ---------------------------------------------------------------------------
 
-def pairedassociation(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T21: PairedAssociation.
-
-    Within one trial: PAIR_A (cue A on ch A + angle A on ch B),
-    PAIR_B (cue B + angle B), PROBE (one cue alone), RESP (paired angle).
-    Tests within-trial one-shot associative binding.
-
-    Inputs:  fixation, cue angle on ch A, paired angle on ch B
-    Outputs: fixation, recalled angle
-    """
+def pairedassociation(config, rng):
+    """T21: Within-trial one-shot binding of cue -> angle pairs."""
     dt     = config['dt']
     B      = config['batch_size']
     n_cues = 8
@@ -616,13 +551,13 @@ def pairedassociation(config: dict, rng: np.random.RandomState) -> Trial:
     same         = cue_ids_b == cue_ids_a
     cue_ids_b[same] = (cue_ids_b[same] + 1) % n_cues
 
-    cue_locs_a   = cue_locs_all[cue_ids_a]
-    cue_locs_b   = cue_locs_all[cue_ids_b]
-    angle_a      = rng.uniform(0, 2 * np.pi, B)
-    angle_b      = rng.uniform(0, 2 * np.pi, B)
-    probe_is_a   = rng.choice([0, 1], size=B).astype(bool)
-    probe_locs   = np.where(probe_is_a, cue_locs_a, cue_locs_b)
-    resp_locs    = np.where(probe_is_a, angle_a, angle_b)
+    cue_locs_a = cue_locs_all[cue_ids_a]
+    cue_locs_b = cue_locs_all[cue_ids_b]
+    angle_a    = rng.uniform(0, 2 * np.pi, B)
+    angle_b    = rng.uniform(0, 2 * np.pi, B)
+    probe_is_a = rng.choice([0, 1], size=B).astype(bool)
+    probe_locs = np.where(probe_is_a, cue_locs_a, cue_locs_b)
+    resp_locs  = np.where(probe_is_a, angle_a, angle_b)
 
     fix_dur    = _ri(rng, 30, 70)
     pair_dur   = _ri(rng, 40, 80)
@@ -643,7 +578,6 @@ def pairedassociation(config: dict, rng: np.random.RandomState) -> Trial:
     trial = Trial(tdim, B, dt=dt,
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
     _fix(trial, 0, resp_on)
-
     _angle_in(trial, cue_locs_a, 'A', pair_a_on, pair_a_off)
     _angle_in(trial, angle_a,    'B', pair_a_on, pair_a_off)
     _angle_in(trial, cue_locs_b, 'A', pair_b_on, pair_b_off)
@@ -668,16 +602,8 @@ def pairedassociation(config: dict, rng: np.random.RandomState) -> Trial:
 # T22: ReversalLearning
 # ---------------------------------------------------------------------------
 
-def reversallearning(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T22: ReversalLearning.
-
-    Like CueResponseAssoc but mapping reverses. Reversal signaled by
-    IN_REAL_B = 1 during cue period (supervised proxy).
-
-    Inputs:  fixation, cue angle on ch A, reversal flag on IN_REAL_B
-    Outputs: fixation, response angle
-    """
+def reversallearning(config, rng):
+    """T22: Cue -> angle with reversal signaled by IN_REAL_B."""
     dt     = config['dt']
     B      = config['batch_size']
     n_cues = 4
@@ -708,11 +634,9 @@ def reversallearning(config: dict, rng: np.random.RandomState) -> Trial:
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
     _fix(trial, 0, resp_on)
     _angle_in(trial, cue_locs, 'A', cue_on, cue_off)
-
     for i in range(B):
         if post_reversal[i]:
             trial.x[cue_on:cue_off, i, IN_REAL_B] = 1.0
-
     _angle_out(trial, response_locs, resp_on, tdim)
 
     trial.add_cost_mask(response_on=resp_on)
@@ -729,16 +653,8 @@ def reversallearning(config: dict, rng: np.random.RandomState) -> Trial:
 # T23: OnlineLinearReg
 # ---------------------------------------------------------------------------
 
-def onlinelinearreg(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T23: OnlineLinearReg.
-
-    K examples of (x, ax+b) shown sequentially. Query x_q; predict y_q.
-    Fresh function parameters per trial.
-
-    Inputs:  fixation, x on IN_REAL_A, y on IN_REAL_B
-    Outputs: fixation, predicted y on OUT_REAL_A
-    """
+def onlinelinearreg(config, rng):
+    """T23: In-context linear regression y=ax+b."""
     dt = config['dt']
     B  = config['batch_size']
     K  = _ri(rng, 5, 7)
@@ -790,15 +706,8 @@ def onlinelinearreg(config: dict, rng: np.random.RandomState) -> Trial:
 # T24: OnlineNonlinearReg
 # ---------------------------------------------------------------------------
 
-def onlinenonlinearreg(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T24: OnlineNonlinearReg.
-
-    Like T23 but y = sin(omega * x + phi).
-
-    Inputs:  fixation, x on IN_REAL_A, y on IN_REAL_B
-    Outputs: fixation, predicted y on OUT_REAL_A
-    """
+def onlinenonlinearreg(config, rng):
+    """T24: In-context nonlinear regression y=sin(omega*x+phi)."""
     dt = config['dt']
     B  = config['batch_size']
     K  = _ri(rng, 7, 10)
@@ -850,16 +759,8 @@ def onlinenonlinearreg(config: dict, rng: np.random.RandomState) -> Trial:
 # T25: FewShotClassif
 # ---------------------------------------------------------------------------
 
-def fewshotclassif(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T25: FewShotClassif.
-
-    K classes x M examples (feature vector on cue channels + label on
-    IN_REAL_A). Query feature; output class label on OUT_REAL_A.
-
-    Inputs:  fixation, features on cue channels 7-10, label on IN_REAL_A
-    Outputs: fixation, class label on OUT_REAL_A
-    """
+def fewshotclassif(config, rng):
+    """T25: K-shot classification."""
     dt = config['dt']
     B  = config['batch_size']
     K  = 3
@@ -917,22 +818,14 @@ def fewshotclassif(config: dict, rng: np.random.RandomState) -> Trial:
 # T26: MemoryDM
 # ---------------------------------------------------------------------------
 
-def memorydm(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T26: MemoryDM (compositional: memory + decision making).
-
-    Store angle theta. Then observe evidence A_A and A_B.
-    Respond at theta if A_A > A_B, else theta + pi.
-
-    Inputs:  fixation, theta on ch A, evidence on IN_REAL_A/B
-    Outputs: fixation, response angle
-    """
+def memorydm(config, rng):
+    """T26: Memory + decision making (compositional)."""
     dt = config['dt']
     B  = config['batch_size']
 
-    theta    = rng.uniform(0, 2 * np.pi, B)
-    A_A      = rng.uniform(0.3, 1.0, B)
-    A_B      = rng.uniform(0.3, 1.0, B)
+    theta = rng.uniform(0, 2 * np.pi, B)
+    A_A   = rng.uniform(0.3, 1.0, B)
+    A_B   = rng.uniform(0.3, 1.0, B)
 
     fix_dur   = _ri(rng, 30, 80)
     stim_dur  = _ri(rng, 30, 100)
@@ -953,11 +846,9 @@ def memorydm(config: dict, rng: np.random.RandomState) -> Trial:
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
     _fix(trial, 0, resp_on)
     _angle_in(trial, theta, 'A', stim_on, stim_off)
-
     for i in range(B):
         trial.x[ev_on:ev_off, i, IN_REAL_A] = A_A[i]
         trial.x[ev_on:ev_off, i, IN_REAL_B] = A_B[i]
-
     _angle_out(trial, response_locs, resp_on, tdim)
 
     trial.add_cost_mask(response_on=resp_on)
@@ -975,17 +866,8 @@ def memorydm(config: dict, rng: np.random.RandomState) -> Trial:
 # T27: CountAndRecall
 # ---------------------------------------------------------------------------
 
-def countandrecall(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T27: CountAndRecall (compositional: counting + binding).
-
-    N pulses on IN_REAL_A, each paired with an angle on ch A.
-    Probe on IN_REAL_B indicates which pulse to recall.
-    Output: angle of that pulse.
-
-    Inputs:  fixation, pulses on IN_REAL_A, angles on ch A, probe on IN_REAL_B
-    Outputs: fixation, recalled angle
-    """
+def countandrecall(config, rng):
+    """T27: Counting + binding (compositional)."""
     dt    = config['dt']
     B     = config['batch_size']
     N_max = 4
@@ -1011,10 +893,10 @@ def countandrecall(config: dict, rng: np.random.RandomState) -> Trial:
     angle_dur = max(1, int(15 / 1))
 
     for i in range(B):
-        N      = N_vals[i]
-        angles = rng.uniform(0, 2 * np.pi, N)
-        recall = rng.randint(0, N)
-        spacing  = stream_dur // (N + 1)
+        N       = N_vals[i]
+        angles  = rng.uniform(0, 2 * np.pi, N)
+        recall  = rng.randint(0, N)
+        spacing = stream_dur // (N + 1)
         positions = [stream_on + spacing * (j + 1) for j in range(N)]
         positions = [min(p, stream_off - angle_dur - 5) for p in positions]
 
@@ -1038,25 +920,29 @@ def countandrecall(config: dict, rng: np.random.RandomState) -> Trial:
 
 
 # ---------------------------------------------------------------------------
-# T28: ConditionalRhythm
+# T28: ConditionalRhythm (FIXED)
 # ---------------------------------------------------------------------------
 
-def conditionalrhythm(config: dict, rng: np.random.RandomState) -> Trial:
+def conditionalrhythm(config, rng):
     """
-    T28: ConditionalRhythm (compositional: limit cycle + context gating).
+    T28: ConditionalRhythm (limit cycle + context gating).
 
-    Frequency cue f1 and f2 given at start on IN_REAL_A/B.
-    Network generates sin at f1, then switch pulse on IN_REAL_B triggers
-    switch to f2.
+    FIX: Phase 2 target now maintains phase continuity across the switch.
+    Previously Phase 2 reset to phase=0 at phase2_on, creating a
+    discontinuity — the target jumped to sin(0) while the network's
+    oscillator was mid-cycle in Phase 1.
 
-    Inputs:  fixation, f1 on IN_REAL_A, f2 on IN_REAL_B during cue,
-             switch pulse on IN_REAL_B during phase 1
-    Outputs: fixation during cue, sinusoid on OUT_REAL_A
+    Now Phase 2 target is computed so that the phase at the switch moment
+    matches what the oscillator would be if it had been running at f2 since
+    the cue. This makes the switch physically achievable — the network
+    transitions between two continuous oscillations rather than jumping
+    to an arbitrary phase.
     """
     dt    = config['dt']
     B     = config['batch_size']
     f_min = 0.02
     f_max = 0.10
+    RAMP_DUR = 5  # ramp up at start of each phase
 
     f1          = rng.uniform(f_min, f_max / 2, B)
     f2          = rng.uniform(f_max / 2, f_max, B)
@@ -1084,10 +970,23 @@ def conditionalrhythm(config: dict, rng: np.random.RandomState) -> Trial:
         trial.x[cue_on:cue_off, i, IN_REAL_A] = f1[i] / f_max
         trial.x[cue_on:cue_off, i, IN_REAL_B] = f2[i] / f_max
         trial.x[switch_on:switch_off, i, IN_REAL_B] = 1.0
+
+        # Phase 1: ramp up then sustain at f1.
         for t in range(phase1_on, phase1_off):
-            trial.y[t, i, OUT_REAL_A] = np.sin(2 * np.pi * f1[i] * (t - phase1_on))
+            phase = 2 * np.pi * f1[i] * (t - phase1_on)
+            ramp  = min(1.0, (t - phase1_on) / max(1, RAMP_DUR))
+            trial.y[t, i, OUT_REAL_A] = ramp * np.sin(phase)
+
+        # FIX: Phase 2 starts from the phase f2 would have at the switch
+        # moment if it had been running since phase1_on. This ensures
+        # continuity — no phase jump at the switch.
+        phase2_offset = 2 * np.pi * f2[i] * phase1_dur
+
         for t in range(phase2_on, phase2_off):
-            trial.y[t, i, OUT_REAL_A] = np.sin(2 * np.pi * f2[i] * (t - phase2_on))
+            # Phase continues from where f2 would be at switch_off.
+            phase = phase2_offset + 2 * np.pi * f2[i] * (t - phase2_on)
+            ramp  = min(1.0, (t - phase2_on) / max(1, RAMP_DUR))
+            trial.y[t, i, OUT_REAL_A] = ramp * np.sin(phase)
 
     trial.add_cost_mask(response_on=phase1_on)
     trial.epochs = {
@@ -1104,17 +1003,8 @@ def conditionalrhythm(config: dict, rng: np.random.RandomState) -> Trial:
 # T29: DelayedAssociation
 # ---------------------------------------------------------------------------
 
-def delayedassociation(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T29: DelayedAssociation (compositional: binding + interference resistance).
-
-    See (cue angle on ch A, paired angle on ch B). Then distractors on ch A.
-    Probe: cue shown alone. Recall paired angle.
-
-    Inputs:  fixation, cue on ch A, paired angle on ch B,
-             distractor angles on ch A during distract period
-    Outputs: fixation, recalled paired angle
-    """
+def delayedassociation(config, rng):
+    """T29: Binding + interference resistance."""
     dt     = config['dt']
     B      = config['batch_size']
     n_cues = 8
@@ -1146,7 +1036,6 @@ def delayedassociation(config: dict, rng: np.random.RandomState) -> Trial:
     _angle_in(trial, cue_locs,      'A', pair_on, pair_off)
     _angle_in(trial, paired_angles, 'B', pair_on, pair_off)
 
-    # Distractor angles on ch A at irregular times.
     spacing = distract_dur // (n_distractors + 1)
     for j in range(n_distractors):
         d_on  = distract_on + j * spacing + _ri(rng, 0, spacing // 3)
@@ -1174,26 +1063,18 @@ def delayedassociation(config: dict, rng: np.random.RandomState) -> Trial:
 # T30: SequentialDecision
 # ---------------------------------------------------------------------------
 
-def sequentialdecision(config: dict, rng: np.random.RandomState) -> Trial:
-    """
-    T30: SequentialDecision (compositional: evidence integration x3).
-
-    Three sequential decision blocks. Each block: two stimuli on ch A and B;
-    stronger wins. Final response is circular mean of three winners.
-
-    Inputs:  fixation, stimuli on ch A and B across three blocks
-    Outputs: fixation, composite response angle
-    """
+def sequentialdecision(config, rng):
+    """T30: Three sequential decisions, composite response."""
     dt       = config['dt']
     B        = config['batch_size']
     n_blocks = 3
 
-    fix_dur  = _ri(rng, 30, 80)
-    block_dur= _ri(rng, 90, 130)
-    resp_dur = _ri(rng, 30, 100)
+    fix_dur   = _ri(rng, 30, 80)
+    block_dur = _ri(rng, 90, 130)
+    resp_dur  = _ri(rng, 30, 100)
 
-    resp_on  = fix_dur + n_blocks * block_dur
-    tdim     = resp_on + resp_dur
+    resp_on = fix_dur + n_blocks * block_dur
+    tdim    = resp_on + resp_dur
 
     trial = Trial(tdim, B, dt=dt,
                   sigma_x=config['sigma_x'], alpha=config['alpha'])
@@ -1217,7 +1098,7 @@ def sequentialdecision(config: dict, rng: np.random.RandomState) -> Trial:
             trial.x[blk_on:blk_off, i, IN_SIN_B] = amp_B[i] * np.sin(theta_B[i])
             trial.x[blk_on:blk_off, i, IN_COS_B] = amp_B[i] * np.cos(theta_B[i])
 
-        winner  = np.where(amp_A > amp_B, theta_A, theta_B)
+        winner   = np.where(amp_A > amp_B, theta_A, theta_B)
         sin_sum += np.sin(winner)
         cos_sum += np.cos(winner)
 
@@ -1240,45 +1121,45 @@ def sequentialdecision(config: dict, rng: np.random.RandomState) -> Trial:
 # ---------------------------------------------------------------------------
 
 NEW_TASKS = {
-    'multiitemrecall'    : multiitemrecall,    # T12
-    'pulsecounting'      : pulsecounting,      # T13
-    'intervalreproduction': intervalreproduction, # T14
-    'pulserateestimation': pulserateestimation, # T15
-    'rhythmgeneration'   : rhythmgeneration,   # T16
-    'sequencerecall'     : sequencerecall,     # T17
-    'toggle'             : toggle,             # T18
-    'conditionaltoggle'  : conditionaltoggle,  # T19
-    'cueresponseassoc'   : cueresponseassoc,   # T20
-    'pairedassociation'  : pairedassociation,  # T21
-    'reversallearning'   : reversallearning,   # T22
-    'onlinelinearreg'    : onlinelinearreg,    # T23
-    'onlinenonlinearreg' : onlinenonlinearreg, # T24
-    'fewshotclassif'     : fewshotclassif,     # T25
-    'memorydm'           : memorydm,           # T26
-    'countandrecall'     : countandrecall,     # T27
-    'conditionalrhythm'  : conditionalrhythm,  # T28
-    'delayedassociation' : delayedassociation, # T29
-    'sequentialdecision' : sequentialdecision, # T30
+    'multiitemrecall'     : multiitemrecall,
+    'pulsecounting'       : pulsecounting,
+    'intervalreproduction': intervalreproduction,
+    'pulserateestimation' : pulserateestimation,
+    'rhythmgeneration'    : rhythmgeneration,
+    'sequencerecall'      : sequencerecall,
+    'toggle'              : toggle,
+    'conditionaltoggle'   : conditionaltoggle,
+    'cueresponseassoc'    : cueresponseassoc,
+    'pairedassociation'   : pairedassociation,
+    'reversallearning'    : reversallearning,
+    'onlinelinearreg'     : onlinelinearreg,
+    'onlinenonlinearreg'  : onlinenonlinearreg,
+    'fewshotclassif'      : fewshotclassif,
+    'memorydm'            : memorydm,
+    'countandrecall'      : countandrecall,
+    'conditionalrhythm'   : conditionalrhythm,
+    'delayedassociation'  : delayedassociation,
+    'sequentialdecision'  : sequentialdecision,
 }
 
 NEW_TASK_NAMES = {
-    'multiitemrecall'    : 'Multi-Item Recall',
-    'pulsecounting'      : 'Pulse Count',
+    'multiitemrecall'     : 'Multi-Item Recall',
+    'pulsecounting'       : 'Pulse Count',
     'intervalreproduction': 'Interval Repro',
-    'pulserateestimation': 'Rate Estim',
-    'rhythmgeneration'   : 'Rhythm Gen',
-    'sequencerecall'     : 'Seq Recall',
-    'toggle'             : 'Toggle',
-    'conditionaltoggle'  : 'Cond Toggle',
-    'cueresponseassoc'   : 'Cue Assoc',
-    'pairedassociation'  : 'Paired Assoc',
-    'reversallearning'   : 'Reversal Learn',
-    'onlinelinearreg'    : 'Online Lin Reg',
-    'onlinenonlinearreg' : 'Online Nonlin Reg',
-    'fewshotclassif'     : 'Few-Shot Classif',
-    'memorydm'           : 'Memory DM',
-    'countandrecall'     : 'Count & Recall',
-    'conditionalrhythm'  : 'Cond Rhythm',
-    'delayedassociation' : 'Delayed Assoc',
-    'sequentialdecision' : 'Sequential Dec',
+    'pulserateestimation' : 'Rate Estim',
+    'rhythmgeneration'    : 'Rhythm Gen',
+    'sequencerecall'      : 'Seq Recall',
+    'toggle'              : 'Toggle',
+    'conditionaltoggle'   : 'Cond Toggle',
+    'cueresponseassoc'    : 'Cue Assoc',
+    'pairedassociation'   : 'Paired Assoc',
+    'reversallearning'    : 'Reversal Learn',
+    'onlinelinearreg'     : 'Online Lin Reg',
+    'onlinenonlinearreg'  : 'Online Nonlin Reg',
+    'fewshotclassif'      : 'Few-Shot Classif',
+    'memorydm'            : 'Memory DM',
+    'countandrecall'      : 'Count & Recall',
+    'conditionalrhythm'   : 'Cond Rhythm',
+    'delayedassociation'  : 'Delayed Assoc',
+    'sequentialdecision'  : 'Sequential Dec',
 }
