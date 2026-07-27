@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=leakyrnn_256_30tasks_v4
+#SBATCH --job-name=leakyrnn_rhythm_fixed
 #SBATCH --account=kempner_dgc_lab
 #SBATCH --partition=kempner
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --time=2-00:00:00
-#SBATCH --output=logs/train_all30_%j.out
-#SBATCH --error=logs/train_all30_%j.err
+#SBATCH --output=logs/train_rhythm_%j.out
+#SBATCH --error=logs/train_rhythm_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=ccheng35@harvard.edu
 
@@ -39,28 +39,30 @@ print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'n
 echo "================"
 
 # ---------------------------------------------------------------------------
-# Training — v4 with fixed task definitions
+# Rhythm-only fixed-weight training
 #
-# Changes from v3:
-#   - T16 RhythmGeneration: ramp-up at start of sustain
-#   - T18 Toggle: initial state signaled on IN_REAL_B
-#   - T19 ConditionalToggle: initial states signaled on IN_REAL_B, IN_SIN_B
-#   - T28 ConditionalRhythm: phase continuity fix at switch
+# Scientific question: can the fixed-weight LeakyRNN learn
+# rhythmgeneration and conditionalrhythm in isolation after the
+# task definition fixes (ramp-up, phase continuity)?
+#
+# If performance improves from 0.0 here, the task bugs were the problem.
+# If still 0.0, the limit cycle stability issue requires plasticity or
+# specialized initialization regardless of task definition.
 # ---------------------------------------------------------------------------
 
-echo "Starting 30-task training v4 (fixed tasks) at $(date)"
+echo "Starting rhythm-only fixed-weight training at $(date)"
 
 python3 -u scripts/train_all30.py \
     --rnn_type     LeakyRNN \
     --n_rnn        256 \
     --seed         0 \
-    --max_steps    10000000 \
+    --max_steps    5000000 \
     --batch_size   128 \
     --lr           0.0003 \
     --display_step 5000 \
     --ckpt_step    50000 \
     --target_perf  1.1 \
-    --task_subset  all30 \
-    --save_dir     runs/LeakyRNN_256units_30tasks_seed0_v4
+    --task_subset  rhythm_only \
+    --save_dir     runs/LeakyRNN_256units_rhythm_fixed_seed0
 
 echo "Training complete at $(date)"

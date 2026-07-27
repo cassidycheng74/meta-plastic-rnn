@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=leakyrnn_256_30tasks_v4
+#SBATCH --job-name=leakyrnn_toggle_fixed
 #SBATCH --account=kempner_dgc_lab
 #SBATCH --partition=kempner
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-node=1
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --time=2-00:00:00
-#SBATCH --output=logs/train_all30_%j.out
-#SBATCH --error=logs/train_all30_%j.err
+#SBATCH --output=logs/train_toggle_%j.out
+#SBATCH --error=logs/train_toggle_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=ccheng35@harvard.edu
 
@@ -39,28 +39,31 @@ print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'n
 echo "================"
 
 # ---------------------------------------------------------------------------
-# Training — v4 with fixed task definitions
+# Toggle-only fixed-weight training
 #
-# Changes from v3:
-#   - T16 RhythmGeneration: ramp-up at start of sustain
-#   - T18 Toggle: initial state signaled on IN_REAL_B
-#   - T19 ConditionalToggle: initial states signaled on IN_REAL_B, IN_SIN_B
-#   - T28 ConditionalRhythm: phase continuity fix at switch
+# Scientific question: can the fixed-weight LeakyRNN learn toggle and
+# conditionaltoggle in isolation after the task definition fix
+# (initial state signaled on IN_REAL_B)?
+#
+# If performance improves from 0.0, the missing initial state signal
+# was the main problem. If still 0.0, bistable dynamics cannot be
+# bootstrapped by gradient descent regardless of task definition and
+# a different approach is needed (specialized init, plasticity, etc.).
 # ---------------------------------------------------------------------------
 
-echo "Starting 30-task training v4 (fixed tasks) at $(date)"
+echo "Starting toggle-only fixed-weight training at $(date)"
 
 python3 -u scripts/train_all30.py \
     --rnn_type     LeakyRNN \
     --n_rnn        256 \
     --seed         0 \
-    --max_steps    10000000 \
+    --max_steps    5000000 \
     --batch_size   128 \
     --lr           0.0003 \
     --display_step 5000 \
     --ckpt_step    50000 \
     --target_perf  1.1 \
-    --task_subset  all30 \
-    --save_dir     runs/LeakyRNN_256units_30tasks_seed0_v4
+    --task_subset  toggle_only \
+    --save_dir     runs/LeakyRNN_256units_toggle_fixed_seed0
 
 echo "Training complete at $(date)"

@@ -49,12 +49,14 @@ parser.add_argument('--ckpt_step',   type=int,   default=10_000,
 parser.add_argument('--target_perf', type=float, default=0.99,
                     help='Early stopping performance threshold')
 parser.add_argument('--task_subset', type=str,   default='all30',
-                    choices=['all30', 'yang11', 'new19'],
+                    choices=['all30', 'yang11', 'new19', 'assoc_only',
+         'icl_only', 'rhythm_only', 'toggle_only'],
                     help='Which tasks to train on')
 parser.add_argument('--save_dir',    type=str,   default=None,
                     help='Override output directory')
 parser.add_argument('--rnn_type', type=str, default='LeakyRNN',
-                    choices=['LeakyRNN', 'GRU', 'Transformer'])
+                    choices=['all30', 'yang11', 'new19', 'assoc_only',
+         'icl_only', 'rhythm_only', 'toggle_only'])
 parser.add_argument('--d_model',  type=int, default=128)
 parser.add_argument('--n_heads',  type=int, default=4)
 parser.add_argument('--n_layers', type=int, default=3)
@@ -80,6 +82,12 @@ elif args.task_subset == 'yang11':
     task_funcs = YANG_DRISCOLL_TASKS
 elif args.task_subset == 'new19':
     task_funcs = NEW_TASKS
+elif args.task_subset == 'rhythm_only':
+    task_funcs = {k: NEW_TASKS[k] for k in [
+        'rhythmgeneration', 'conditionalrhythm']}
+elif args.task_subset == 'toggle_only':
+    task_funcs = {k: NEW_TASKS[k] for k in [
+        'toggle', 'conditionaltoggle']}
 
 n_tasks = len(task_funcs)
 print(f'Task set: {args.task_subset} ({n_tasks} tasks)')
