@@ -60,8 +60,8 @@ python3 -u scripts/train_plastic.py \
     --n_rnn         256 \
     --seed          0 \
     --n_lifetimes   100000 \
-    --n_trials      20 \
-    --batch_size    32 \
+    --n_trials      10 \
+    --batch_size    8 \
     --lr            0.0003 \
     --alpha_init    0.0 \
     --eta_init      0.01 \

@@ -243,25 +243,7 @@ class PlasticRNN(nn.Module):
     # Full sequence forward pass
     # -----------------------------------------------------------------------
 
-    def forward(
-        self,
-        x:   torch.Tensor,                    # (T, B, n_input)
-        h0:  Optional[torch.Tensor] = None,   # (B, n_rnn)
-        A0:  Optional[torch.Tensor] = None,   # (B, n_rnn, n_rnn)
-    ) -> PlasticOutput:
-        """
-        Forward pass over a full trial sequence.
-
-        Args:
-            x:  input tensor (T, B, n_input)
-            h0: initial hidden state (None = zeros)
-                Should always be detached when passed from previous trial.
-            A0: initial Hebbian trace (None = zeros)
-                Detach every truncate_every trials to bound graph size.
-
-        Returns:
-            PlasticOutput(output, hidden, hebb, loss_reg)
-        """
+    def forward(self, x, h0=None, A0=None):
         T, B, _ = x.shape
         device  = x.device
 
@@ -273,21 +255,21 @@ class PlasticRNN(nn.Module):
 
         for t in range(T):
             h, A, r = self.step(x[t], h, A)
-            out = self.W_out(r)   # (B, n_output)
+            out = self.W_out(r)
             hiddens.append(h)
             outputs.append(out)
+            # Detach A every 50 timesteps to prevent graph buildup
+            # within a single trial. Loses some gradient signal but
+            # dramatically reduces memory.
+            if t % 50 == 49:
+                A = A.detach()
 
-        hidden_seq = torch.stack(hiddens, dim=0)   # (T, B, n_rnn)
-        output_seq = torch.stack(outputs, dim=0)   # (T, B, n_output)
+        hidden_seq = torch.stack(hiddens, dim=0)
+        output_seq = torch.stack(outputs, dim=0)
+        loss_reg   = self._regularization_loss(hidden_seq)
 
-        loss_reg = self._regularization_loss(hidden_seq)
-
-        return PlasticOutput(
-            output   = output_seq,
-            hidden   = hidden_seq,
-            hebb     = A,
-            loss_reg = loss_reg,
-        )
+        return PlasticOutput(output=output_seq, hidden=hidden_seq,
+                            hebb=A, loss_reg=loss_reg)
 
     # -----------------------------------------------------------------------
     # Regularization
