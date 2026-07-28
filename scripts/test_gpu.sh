@@ -4,7 +4,7 @@
 #SBATCH --partition=kempner
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --gpus-per-node=1
 #SBATCH --mem=16G
 #SBATCH --time=0-00:10:00
