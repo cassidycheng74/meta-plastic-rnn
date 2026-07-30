@@ -368,3 +368,84 @@ The stuck tasks (toggle, conditionaltoggle, rhythmgeneration, conditionalrhythm)
 The only difference across architectures is that GRU shows 0.013 on rhythmgeneration — the first nonzero value on this task. Suggestive but not conclusive.
 
 The scientific interest in Phase 7 is the mechanism, not the performance. All three architectures solve the same tasks but almost certainly via different internal computations — ring attractors (LeakyRNN), gated dynamics (GRU), attention patterns (Transformer). PCA and shared subspace analysis will reveal whether different architectures find the same or different dynamical motifs for the same tasks.
+
+## 7/30/26
+
+Run: LeakyRNN 256 units — All 30 Tasks v4 (Fixed Task Definitions)
+
+Date: 2026-07-28
+Status: Complete, hit 2-day time limit at 1M steps
+Log: runs/LeakyRNN_256units_30tasks_seed0_v4/
+
+Architecture: LeakyRNN, 256 units
+Steps completed: 1,000,000
+Task identity: yes
+Task fixes applied: yes (toggle initial state, rhythm ramp, conditionalrhythm phase continuity)
+
+Final performance at 1M steps
+
+26/30 tasks solved — identical profile to v1. Task fixes did not break any previously solved tasks.
+
+Toggle and rhythm still at 0.0 in multitask setting — multitask interference confirmed as a factor. The isolated runs (below) show these tasks can learn when trained alone.
+
+Notable: dm (0.975), dmanti (0.963), memorydm (0.938), multiitemrecall (0.975), countandrecall (0.988), sequentialdecision (0.988) all near but not at 1.0 — would likely converge with more steps.
+
+Run: LeakyRNN 256 units — Rhythm Only (Fixed Tasks)
+
+Date: 2026-07-28
+Status: Complete, hit 2-day time limit at 650k steps
+Log: runs/LeakyRNN_256units_rhythm_fixed_seed0/
+
+Architecture: LeakyRNN, 256 units
+Tasks: rhythmgeneration, conditionalrhythm only
+Task fixes applied: yes (ramp-up, conditionalrhythm phase continuity)
+
+Final performance at 650k steps
+
+rhythmgeneration: 0.062
+conditionalrhythm: 0.000
+
+First nonzero performance ever seen on rhythmgeneration across any architecture or training run. Performance is low and noisy (0.03-0.16 during training) but confirms the task is learnable in principle with the right dynamics.
+
+ConditionalRhythm still at 0.0 — harder variant, needs rhythmgeneration to stabilize first.
+
+Key finding
+
+The ramp-up fix (5-timestep amplitude ramp at sustain start) was necessary but not sufficient. The network can occasionally initiate the correct oscillation but cannot sustain it reliably — limit cycle stability is still the bottleneck. More steps and/or plasticity rules needed.
+
+Run: LeakyRNN 256 units — Toggle Only (Fixed Tasks)
+
+Date: 2026-07-28
+Status: Complete, hit 2-day time limit at 1.05M steps
+Log: runs/LeakyRNN_256units_toggle_fixed_seed0/
+
+Architecture: LeakyRNN, 256 units
+Tasks: toggle, conditionaltoggle only
+Task fixes applied: yes (initial state signaled on IN_REAL_B)
+
+Final performance at 1.05M steps
+
+toggle: 0.050
+conditionaltoggle: 0.000
+
+First nonzero performance ever seen on toggle. Performance fluctuates 0.00-0.12 during training, settling around 0.05.
+
+ConditionalToggle still at 0.0 — requires two independent bistable states simultaneously, needs toggle to stabilize first.
+
+Key finding
+
+The initial state signal fix was necessary and sufficient to get nonzero performance. Previously the network had no information about the starting state and averaged to zero. With the fix, the network can occasionally initialize correctly and track a few flips, but bistable attractor dynamics are still fragile.
+
+Task Bug Analysis and Fixes (2026-07-27)
+
+Four bugs identified and fixed in tasks/new_tasks.py:
+
+T16 RhythmGeneration: target amplitude now ramps from 0 to 1 over first 5 timesteps of sustain. Previously required instantaneous phase initialization from arbitrary hidden state.
+
+T18 Toggle: initial bistable state now signaled on IN_REAL_B for first 10 timesteps of stream. Previously network had no way to know starting state and averaged to zero output.
+
+T19 ConditionalToggle: initial states for both channels now signaled (channel A on IN_REAL_B, channel B on IN_SIN_B). Same fix as toggle applied to both independent channels.
+
+T28 ConditionalRhythm: Phase 2 target now maintains phase continuity across the switch. Previously reset to phase=0 creating a discontinuity that made smooth tracking physically impossible.
+
+Impact: toggle and rhythmgeneration show nonzero performance for the first time after fixes. ConditionalToggle and ConditionalRhythm still at 0.0 — harder variants need simpler versions to converge first.
