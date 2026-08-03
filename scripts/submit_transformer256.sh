@@ -73,6 +73,6 @@ python3 -u scripts/train_all30.py \
     --ckpt_step    50000 \
     --target_perf  1.1 \
     --task_subset  all30 \
-    --save_dir     runs/Transformer_256d_30tasks_seed0
+    --save_dir runs/Transformer_256d_30tasks_seed0_v2
 
 echo "Training complete at $(date)"

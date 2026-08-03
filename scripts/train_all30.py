@@ -114,6 +114,10 @@ config = make_config(
     activation   = 'softplus',
     w_rec_init   = 'diag',
     w_rec_coeff  = 1.0,
+    d_model  = args.d_model,
+    n_heads  = args.n_heads,
+    n_layers = args.n_layers,
+    d_ff     = args.d_ff,
 )
 
 # ---------------------------------------------------------------------------
